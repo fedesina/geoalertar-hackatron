@@ -5,155 +5,301 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GeoAlertAR Demo - NASA Space Apps</title>
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
+    
+    <!-- Librerías -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+
     <style>
-        #map { height: 100vh; background: #333; }
-        .leaflet-popup-content-wrapper { background: #f9fafb; }
-        .info-panel { max-height: calc(100vh - 80px); }
+        :root { --panel-width: 384px; }
+        html, body { height: 100vh; overflow: hidden; font-family: Inter, system-ui, sans-serif; }
+        #map { width: 100%; height: 100%; }
+        .info-panel {
+            width: var(--panel-width);
+            max-height: calc(100% - 2rem);
+            transition: transform 0.3s ease-in-out;
+        }
+        .leaflet-div-icon { background: transparent; border: 0; }
+        .custom-popup .leaflet-popup-content-wrapper { background-color: rgba(255, 255, 255, 0.9); backdrop-filter: blur(5px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .custom-popup .leaflet-popup-content { margin: 14px; font-size: 14px; }
     </style>
 </head>
-<body class="overflow-hidden">
-    <div id="map"></div>
+<body class="bg-gray-800">
 
-    <div class="absolute top-4 left-4 z-[1000] bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-sm info-panel overflow-y-auto">
-        <h1 class="text-xl font-bold text-gray-800">GeoAlertAR Demo</h1>
-        <p class="text-sm text-gray-600 mb-4">Riesgo de Incendios - Córdoba, AR</p>
+    <div id="map" class="absolute top-0 left-0 w-full h-full"></div>
+
+    <!-- Panel de Controles Lateral -->
+    <aside class="info-panel absolute top-4 left-4 z-[1000] bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-2xl flex flex-col space-y-4">
+        <header>
+            <h1 class="text-2xl font-bold text-gray-900">🔥 GeoAlertAR Demo</h1>
+            <p class="text-sm text-gray-600">Análisis de Riesgo de Incendios para Córdoba, AR</p>
+        </header>
+
+        <div class="relative">
+            <input type="text" id="search-box" placeholder="🔍 Buscar localidad..." class="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition">
+        </div>
         
-        <div class="space-y-4">
-            <div>
-                <h3 class="font-semibold text-gray-700 mb-2 border-b pb-1">Niveles de Riesgo</h3>
-                <div id="risk-filters" class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm pt-2">
-                    </div>
-            </div>
-            <div>
-                <h3 class="font-semibold text-gray-700 mb-2 border-b pb-1">Capas de Contexto</h3>
-                <div id="layer-controls" class="space-y-1 text-sm pt-2">
-                    </div>
-            </div>
+        <div class="flex-grow overflow-y-auto pr-2 space-y-3">
+            <details open>
+                <summary class="font-semibold text-gray-800 cursor-pointer hover:text-blue-600">Niveles de Riesgo</summary>
+                <div id="risk-filters" class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm pt-2"></div>
+            </details>
+
+            <details>
+                <summary class="font-semibold text-gray-800 cursor-pointer hover:text-blue-600">Capas de Contexto</summary>
+                <div id="layer-controls" class="space-y-2 text-sm pt-2"></div>
+            </details>
+        </div>
+    </aside>
+
+    <!-- Ventana Modal para Reporte de Inteligencia -->
+    <div id="report-modal-bg" class="hidden fixed inset-0 bg-black/50 z-[2000] flex items-center justify-center p-4 transition-opacity duration-300 opacity-0">
+        <div id="report-modal-content" class="bg-white rounded-lg shadow-xl w-full max-w-2xl transform transition-all duration-300 scale-95">
+            <!-- Contenido del reporte se inyectará aquí -->
         </div>
     </div>
 
 <script>
-    // --- CONFIGURACIÓN ---
-    const CSV_URL = 'riesgo_cordoba.csv';
-    const MAP_CENTER = [-31.5, -64.2];
-    const MAP_ZOOM = 7;
-    const RISK_LEVELS = {
-        "CRÍTICO": { color: "#ef4444" }, "ALTO": { color: "#f97316" },
-        "MODERADO": { color: "#facc15" }, "BAJO": { color: "#22c55e" },
-        "DATOS INSUFICENTES": { color: "#9ca3af" }
+    // --- CONFIGURACIÓN GLOBAL ---
+    const CONFIG = {
+        CSV_URL: 'riesgo_cordoba.csv',
+        MAP_CENTER: [-31.5, -64.2],
+        MAP_ZOOM: 7,
+        RISK_LEVELS: {
+            "CRÍTICO": { color: "#ef4444" }, "ALTO": { color: "#f97316" },
+            "MODERADO": { color: "#facc15" }, "BAJO": { color: "#22c55e" },
+            "DATOS INSUFICENTES": { color: "#9ca3af" }
+        },
+        CONTEXT_LAYERS: [
+            { name: 'Áreas Protegidas', file: 'layers/Areas_Protegidas_Poligono.geojson', style: { color: "#16a34a", weight: 2, opacity: 0.8, fillOpacity: 0.15 } },
+            { name: 'Cuarteles de Bomberos', file: 'layers/Cuartel_Bomberos_Punto.geojson' }
+        ]
     };
-    const LAYERS_CATALOG = [
-        { name: 'Áreas Protegidas', file: 'layers/Areas_Protegidas_Poligono.geojson', style: { color: "#16a34a", weight: 2, opacity: 0.8, fillOpacity: 0.15 } },
-        { name: 'Cuarteles de Bomberos', file: 'layers/Cuartel_Bomberos_Punto.geojson' }
-    ];
 
+    // --- ALMACENAMIENTO DE ESTADO ---
+    let allPointsData = [];
+    const mapLayers = {
+        risk: {},
+        context: {}
+    };
+    let pointMarkersLayer = L.layerGroup();
+    
     // --- INICIALIZACIÓN DEL MAPA ---
-    const map = L.map('map').setView(MAP_CENTER, MAP_ZOOM);
-    const nasaGibsLayer = L.tileLayer(
-        'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
-        { attribution: '© NASA GIBS', maxZoom: 9 }
-    ).addTo(map);
+    const map = L.map('map').setView(CONFIG.MAP_CENTER, CONFIG.MAP_ZOOM);
+    
+    const baseLayers = {
+        "NASA Satélite": L.tileLayer(
+            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
+            { attribution: '© NASA GIBS', maxZoom: 9 }
+        ),
+        "ESRI Satélite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '© Esri'
+        }).addTo(map), // Por defecto
+        "Mapa Oscuro": L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '© CartoDB'
+        }),
+        "Calles": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap'
+        })
+    };
 
-    const riskLayers = {}; // para guardar las capas de riesgo
-    const contextLayers = {}; // para guardar las capas de contexto
+    L.control.layers(baseLayers).addTo(map);
 
     // --- LÓGICA PRINCIPAL ---
-    document.addEventListener('DOMContentLoaded', () => {
-        const papaScript = document.createElement('script');
-        papaScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js';
-        papaScript.onload = () => {
-            loadRiskData(); // Cargar puntos de riesgo
-            loadContextLayers(); // Cargar capas de contexto
-        };
-        document.head.appendChild(papaScript);
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadRiskData();
+        buildRiskFilters();
+        drawPointsOnMap();
+
+        await loadContextLayers();
+        buildLayerControls();
+        
+        setupEventListeners();
     });
 
     async function loadRiskData() {
         try {
-            const response = await fetch(CSV_URL);
-            if (!response.ok) throw new Error(`No se pudo cargar ${CSV_URL}`);
+            const response = await fetch(CONFIG.CSV_URL);
             const text = await response.text();
-            const data = Papa.parse(text, { header: true }).data.filter(p => p.lat && p.lon);
-
-            const filtersContainer = document.getElementById('risk-filters');
-            
-            for (const level in RISK_LEVELS) {
-                const pointsInLevel = data.filter(p => p.nivel === level);
-                if (pointsInLevel.length === 0) continue;
-
-                const layerGroup = L.layerGroup();
-                pointsInLevel.forEach(point => {
-                    const config = RISK_LEVELS[level];
-                    const tempDisplay = parseFloat(point.lst_celsius) > 0 ? `${point.lst_celsius}°C` : 'N/A';
-                    
-                    L.circleMarker([point.lat, point.lon], {
-                        radius: 6, fillColor: config.color, color: "#1f2937",
-                        weight: 1, opacity: 1, fillOpacity: 0.8
-                    }).bindPopup(`
-                        <div class="space-y-1 text-sm">
-                            <h3 class="text-base font-bold">${point.nombre}</h3>
-                            <p class="font-semibold" style="color:${config.color};">${point.nivel} (${point.riesgo_final}%)</p><hr>
-                            <p><strong>NDVI:</strong> ${point.ndvi} | <strong>NBR:</strong> ${point.nbr}</p>
-                            <p><strong>Temp. Sup.:</strong> ${tempDisplay}</p>
-                            <p><strong>Precip (60d):</strong> ${point.precip_60d_mm} mm</p>
-                        </div>
-                    `).addTo(layerGroup);
-                });
-                
-                riskLayers[level] = layerGroup.addTo(map);
-                
-                filtersContainer.innerHTML += `
-                    <label class="flex items-center space-x-2 cursor-pointer">
-                        <input type="checkbox" checked onchange="toggleLayer(this, 'risk', '${level}')" class="h-4 w-4 rounded accent-[${RISK_LEVELS[level].color}]">
-                        <span class="text-gray-700">${level}</span>
-                    </label>`;
-            }
+            allPointsData = Papa.parse(text, { header: true }).data.filter(p => p.lat && p.lon);
         } catch (error) {
-            console.error("Error al cargar los datos de riesgo:", error);
-            // Opcional: mostrar un mensaje de error al usuario
+            console.error("Error crítico al cargar datos de riesgo:", error);
+            alert("No se pudieron cargar los datos de riesgo. Verifique el archivo riesgo_cordoba.csv");
         }
     }
 
+    function buildRiskFilters() {
+        const container = document.getElementById('risk-filters');
+        container.innerHTML = Object.keys(CONFIG.RISK_LEVELS).map(level => `
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" checked class="risk-toggle h-4 w-4 rounded" data-level="${level}" style="accent-color: ${CONFIG.RISK_LEVELS[level].color};">
+                <span class="text-gray-700">${level}</span>
+            </label>
+        `).join('');
+    }
+
+    function drawPointsOnMap(filterText = '') {
+        pointMarkersLayer.clearLayers();
+        
+        const activeLevels = getActiveRiskLevels();
+        const filteredPoints = allPointsData.filter(p => 
+            activeLevels.includes(p.nivel) &&
+            p.nombre.toLowerCase().includes(filterText.toLowerCase())
+        );
+
+        filteredPoints.forEach(point => {
+            const config = CONFIG.RISK_LEVELS[point.nivel];
+            const marker = L.circleMarker([point.lat, point.lon], {
+                radius: 7, fillColor: config.color, color: "#1f2937",
+                weight: 1.5, opacity: 1, fillOpacity: 0.9
+            }).bindPopup('', { className: 'custom-popup' });
+
+            marker.on('click', function(e) {
+                this.setPopupContent(createPopupContent(point));
+                this.openPopup();
+            });
+            
+            marker.addTo(pointMarkersLayer);
+        });
+        
+        if (!map.hasLayer(pointMarkersLayer)) {
+            pointMarkersLayer.addTo(map);
+        }
+    }
+    
+    function createPopupContent(point) {
+        const config = CONFIG.RISK_LEVELS[point.nivel];
+        const tempDisplay = parseFloat(point.lst_celsius) > 0 ? `${point.lst_celsius}°C` : 'N/A';
+        
+        const content = document.createElement('div');
+        content.className = 'space-y-2';
+        content.innerHTML = `
+            <h3 class="text-base font-bold text-gray-800">${point.nombre}</h3>
+            <p class="font-semibold text-sm" style="color:${config.color};">${point.nivel} (${point.riesgo_final}%)</p>
+        `;
+        const button = document.createElement('button');
+        button.className = 'w-full text-sm bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 transition';
+        button.innerText = '📄 Generar Reporte';
+        button.onclick = () => showReportModal(point);
+        
+        content.appendChild(button);
+        return content;
+    }
+
+    function getActiveRiskLevels() {
+        const active = [];
+        document.querySelectorAll('.risk-toggle:checked').forEach(cb => active.push(cb.dataset.level));
+        return active;
+    }
+    
     async function loadContextLayers() {
-        const controlsContainer = document.getElementById('layer-controls');
-        for (const layerInfo of LAYERS_CATALOG) {
+        for (const layerInfo of CONFIG.CONTEXT_LAYERS) {
             try {
                 const response = await fetch(layerInfo.file);
-                if (!response.ok) throw new Error(`No se pudo cargar ${layerInfo.file}`);
                 const geojsonData = await response.json();
-                
                 const layer = L.geoJSON(geojsonData, {
                     style: layerInfo.style,
                     pointToLayer: (feature, latlng) => L.marker(latlng, { 
                         icon: L.divIcon({ html: '🚒', className: 'text-2xl', iconSize: [24, 24] }) 
                     })
                 });
-                contextLayers[layerInfo.name] = layer; // No se añade al mapa por defecto
-
-                controlsContainer.innerHTML += `
-                    <label class="flex items-center space-x-2 cursor-pointer">
-                        <input type="checkbox" onchange="toggleLayer(this, 'context', '${layerInfo.name}')" class="h-4 w-4 rounded">
-                        <span class="text-gray-700">${layerInfo.name}</span>
-                    </label>`;
+                mapLayers.context[layerInfo.name] = layer;
             } catch (error) {
-                console.error(`Error al cargar la capa ${layerInfo.name}:`, error);
-                controlsContainer.innerHTML += `<p class="text-xs text-red-600">No se pudo cargar: ${layerInfo.name}</p>`;
+                console.error(`Error cargando capa ${layerInfo.name}:`, error);
+                mapLayers.context[layerInfo.name] = null; // Marcar como fallida
             }
         }
     }
-
-    function toggleLayer(checkbox, type, layerName) {
-        const layer = (type === 'risk') ? riskLayers[layerName] : contextLayers[layerName];
-        if (layer) {
-            if (checkbox.checked) {
-                map.addLayer(layer);
-            } else {
-                map.removeLayer(layer);
+    
+    function buildLayerControls() {
+        const container = document.getElementById('layer-controls');
+        container.innerHTML = CONFIG.CONTEXT_LAYERS.map(l => `
+            <label class="flex items-center space-x-2 cursor-pointer">
+                <input type="checkbox" class="context-toggle h-4 w-4 rounded" data-name="${l.name}">
+                <span class="text-gray-700">${l.name}</span>
+            </label>
+        `).join('');
+    }
+    
+    function setupEventListeners() {
+        document.getElementById('search-box').addEventListener('input', (e) => drawPointsOnMap(e.target.value));
+        document.getElementById('risk-filters').addEventListener('change', () => drawPointsOnMap(document.getElementById('search-box').value));
+        document.getElementById('layer-controls').addEventListener('change', (e) => {
+            if (e.target.classList.contains('context-toggle')) {
+                const layerName = e.target.dataset.name;
+                const layer = mapLayers.context[layerName];
+                if (layer) {
+                    if (e.target.checked) map.addLayer(layer);
+                    else map.removeLayer(layer);
+                }
             }
-        }
+        });
+    }
+
+    // --- LÓGICA DEL REPORTE MODAL ---
+    function showReportModal(point) {
+        const modalBg = document.getElementById('report-modal-bg');
+        const modalContent = document.getElementById('report-modal-content');
+        const config = CONFIG.RISK_LEVELS[point.nivel];
+        const tempDisplay = parseFloat(point.lst_celsius) > 0 ? `${point.lst_celsius}°C` : 'Dato no disponible';
+
+        modalContent.innerHTML = `
+            <div class="p-6">
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-900">Reporte de Inteligencia</h2>
+                        <p class="text-lg text-gray-600">${point.nombre}</p>
+                    </div>
+                    <button onclick="closeReportModal()" class="text-gray-400 hover:text-gray-600">&times;</button>
+                </div>
+                
+                <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                    <h3 class="text-sm font-semibold text-gray-500 uppercase">Riesgo General</h3>
+                    <p class="text-3xl font-bold" style="color:${config.color};">${point.nivel} (${point.riesgo_final}%)</p>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4 text-sm">
+                    <div class="bg-blue-50 p-3 rounded-lg">
+                        <h4 class="font-bold text-blue-800">🌡️ Condiciones Atmosféricas</h4>
+                        <p><strong>Temp. Superficial:</strong> ${tempDisplay}</p>
+                        <p class="text-xs text-blue-600 mt-1">Temperaturas elevadas secan el combustible vegetal.</p>
+                    </div>
+                    <div class="bg-green-50 p-3 rounded-lg">
+                        <h4 class="font-bold text-green-800">💧 Condiciones de Sequía</h4>
+                        <p><strong>Precipitación (60d):</strong> ${point.precip_60d_mm} mm</p>
+                        <p class="text-xs text-green-600 mt-1">La falta de lluvia reciente genera estrés hídrico.</p>
+                    </div>
+                    <div class="md:col-span-2 bg-yellow-50 p-3 rounded-lg">
+                        <h4 class="font-bold text-yellow-800">🌱 Estado del Combustible (Vegetación)</h4>
+                        <div class="flex space-x-4">
+                            <div>
+                                <p><strong>Índice NDVI:</strong> ${point.ndvi}</p>
+                                <p class="text-xs text-yellow-600 mt-1">Valores bajos indican vegetación seca o escasa.</p>
+                            </div>
+                            <div>
+                                <p><strong>Índice NBR:</strong> ${point.nbr}</p>
+                                <p class="text-xs text-yellow-600 mt-1">Valores bajos sugieren estrés hídrico severo.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+
+        modalBg.classList.remove('hidden');
+        setTimeout(() => {
+            modalBg.classList.remove('opacity-0');
+            modalContent.classList.remove('scale-95');
+        }, 10);
+    }
+    
+    function closeReportModal() {
+        const modalBg = document.getElementById('report-modal-bg');
+        const modalContent = document.getElementById('report-modal-content');
+        modalBg.classList.add('opacity-0');
+        modalContent.classList.add('scale-95');
+        setTimeout(() => modalBg.classList.add('hidden'), 300);
     }
 </script>
 </body>
