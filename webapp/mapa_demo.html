@@ -9,26 +9,28 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
-        #map { height: 100vh; }
-        .leaflet-popup-content-wrapper { background: #f9fafb; border-radius: 8px; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1); }
-        .leaflet-popup-content { margin: 12px; font-family: sans-serif; }
+        #map { height: 100vh; background: #333; }
+        .leaflet-popup-content-wrapper { background: #f9fafb; }
+        .info-panel { max-height: calc(100vh - 80px); }
     </style>
 </head>
 <body class="overflow-hidden">
     <div id="map"></div>
 
-    <div class="absolute top-4 left-4 z-[1000] bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-sm">
+    <div class="absolute top-4 left-4 z-[1000] bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-lg max-w-sm info-panel overflow-y-auto">
         <h1 class="text-xl font-bold text-gray-800">GeoAlertAR Demo</h1>
-        <p class="text-sm text-gray-600 mb-4">NASA Space Apps Challenge 2025</p>
+        <p class="text-sm text-gray-600 mb-4">Riesgo de Incendios - Córdoba, AR</p>
         
-        <div class="space-y-3">
+        <div class="space-y-4">
             <div>
-                <h3 class="font-semibold text-gray-700 mb-2">Niveles de Riesgo</h3>
-                <div id="risk-filters" class="grid grid-cols-2 gap-2 text-sm"></div>
+                <h3 class="font-semibold text-gray-700 mb-2 border-b pb-1">Niveles de Riesgo</h3>
+                <div id="risk-filters" class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm pt-2">
+                    </div>
             </div>
             <div>
-                <h3 class="font-semibold text-gray-700 mb-2">Capas de Contexto</h3>
-                <div id="layer-controls" class="space-y-1 text-sm"></div>
+                <h3 class="font-semibold text-gray-700 mb-2 border-b pb-1">Capas de Contexto</h3>
+                <div id="layer-controls" class="space-y-1 text-sm pt-2">
+                    </div>
             </div>
         </div>
     </div>
@@ -36,152 +38,123 @@
 <script>
     // --- CONFIGURACIÓN ---
     const CSV_URL = 'riesgo_cordoba.csv';
-    const MAP_CENTER = [-31.41, -64.18]; // Córdoba
+    const MAP_CENTER = [-31.5, -64.2];
     const MAP_ZOOM = 7;
     const RISK_LEVELS = {
-        "CRÍTICO": { color: "#ef4444", zOffset: 1000 },
-        "ALTO": { color: "#f97316", zOffset: 800 },
-        "MODERADO": { color: "#facc15", zOffset: 600 },
-        "BAJO": { color: "#22c55e", zOffset: 400 },
-        "MUY BAJO": { color: "#84cc16", zOffset: 200 },
-        "DATOS INSUFICENTES": { color: "#9ca3af", zOffset: 0 }
+        "CRÍTICO": { color: "#ef4444" }, "ALTO": { color: "#f97316" },
+        "MODERADO": { color: "#facc15" }, "BAJO": { color: "#22c55e" },
+        "DATOS INSUFICENTES": { color: "#9ca3af" }
     };
     const LAYERS_CATALOG = [
-        { name: 'Áreas Protegidas', file: 'layers/Areas_Protegidas_Poligono.geojson', style: { color: "#16a34a", weight: 2, opacity: 0.7, fillOpacity: 0.1 } },
+        { name: 'Áreas Protegidas', file: 'layers/Areas_Protegidas_Poligono.geojson', style: { color: "#16a34a", weight: 2, opacity: 0.8, fillOpacity: 0.15 } },
         { name: 'Cuarteles de Bomberos', file: 'layers/Cuartel_Bomberos_Punto.geojson' }
     ];
 
     // --- INICIALIZACIÓN DEL MAPA ---
     const map = L.map('map').setView(MAP_CENTER, MAP_ZOOM);
-
     const nasaGibsLayer = L.tileLayer(
         'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
-        {
-            attribution: 'NASA GIBS',
-            maxZoom: 9
-        }
+        { attribution: '© NASA GIBS', maxZoom: 9 }
     ).addTo(map);
-    
-    const openStreetMap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
+
+    const riskLayers = {}; // para guardar las capas de riesgo
+    const contextLayers = {}; // para guardar las capas de contexto
+
+    // --- LÓGICA PRINCIPAL ---
+    document.addEventListener('DOMContentLoaded', () => {
+        const papaScript = document.createElement('script');
+        papaScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js';
+        papaScript.onload = () => {
+            loadRiskData(); // Cargar puntos de riesgo
+            loadContextLayers(); // Cargar capas de contexto
+        };
+        document.head.appendChild(papaScript);
     });
 
-    const baseMaps = {
-        "NASA Satélite": nasaGibsLayer,
-        "OpenStreetMap": openStreetMap
-    };
-
-    const layerControl = L.control.layers(baseMaps).addTo(map);
-
-    // --- LÓGICA DE CARGA DE DATOS ---
-    let riskDataLayer = L.layerGroup().addTo(map);
-    const contextLayers = {};
-
     async function loadRiskData() {
-        const response = await fetch(CSV_URL);
-        const text = await response.text();
-        const data = Papa.parse(text, { header: true }).data;
-        
-        riskDataLayer.clearLayers();
-        const filters = document.getElementById('risk-filters');
-        filters.innerHTML = '';
-        
-        Object.keys(RISK_LEVELS).forEach(level => {
-            const pointsInLevel = data.filter(p => p.nivel === level);
-            if (pointsInLevel.length === 0) return;
+        try {
+            const response = await fetch(CSV_URL);
+            if (!response.ok) throw new Error(`No se pudo cargar ${CSV_URL}`);
+            const text = await response.text();
+            const data = Papa.parse(text, { header: true }).data.filter(p => p.lat && p.lon);
 
-            const levelLayer = L.layerGroup();
-            contextLayers[level] = levelLayer;
+            const filtersContainer = document.getElementById('risk-filters');
+            
+            for (const level in RISK_LEVELS) {
+                const pointsInLevel = data.filter(p => p.nivel === level);
+                if (pointsInLevel.length === 0) continue;
 
-            pointsInLevel.forEach(point => {
-                const config = RISK_LEVELS[level];
-                const marker = L.circleMarker([point.lat, point.lon], {
-                    radius: 7,
-                    fillColor: config.color,
-                    color: "#1f2937",
-                    weight: 1.5,
-                    opacity: 1,
-                    fillOpacity: 0.8,
-                    pane: 'markerPane',
-                    riseOnHover: true,
-                    zIndexOffset: config.zOffset
+                const layerGroup = L.layerGroup();
+                pointsInLevel.forEach(point => {
+                    const config = RISK_LEVELS[level];
+                    const tempDisplay = parseFloat(point.lst_celsius) > 0 ? `${point.lst_celsius}°C` : 'N/A';
+                    
+                    L.circleMarker([point.lat, point.lon], {
+                        radius: 6, fillColor: config.color, color: "#1f2937",
+                        weight: 1, opacity: 1, fillOpacity: 0.8
+                    }).bindPopup(`
+                        <div class="space-y-1 text-sm">
+                            <h3 class="text-base font-bold">${point.nombre}</h3>
+                            <p class="font-semibold" style="color:${config.color};">${point.nivel} (${point.riesgo_final}%)</p><hr>
+                            <p><strong>NDVI:</strong> ${point.ndvi} | <strong>NBR:</strong> ${point.nbr}</p>
+                            <p><strong>Temp. Sup.:</strong> ${tempDisplay}</p>
+                            <p><strong>Precip (60d):</strong> ${point.precip_60d_mm} mm</p>
+                        </div>
+                    `).addTo(layerGroup);
                 });
-
-                marker.bindPopup(`
-                    <div class="space-y-1">
-                        <h3 class="text-lg font-bold">${point.nombre}</h3>
-                        <p class="font-semibold" style="color:${config.color};">${point.nivel} (${point.riesgo_final}%)</p>
-                        <hr>
-                        <p><strong>NDVI:</strong> ${point.ndvi} | <strong>NBR:</strong> ${point.nbr}</p>
-                        <p><strong>Temp. Sup.:</strong> ${point.lst_celsius}°C</p>
-                        <p><strong>Precip (60d):</strong> ${point.precip_60d_mm} mm</p>
-                    </div>
-                `);
-                marker.addTo(levelLayer);
-            });
-
-            // Añadir al panel de filtros
-            filters.innerHTML += `
-                <label class="flex items-center space-x-2 cursor-pointer">
-                    <input type="checkbox" checked onchange="toggleLayer('${level}')" class="h-4 w-4 rounded accent-[${config.color}]">
-                    <span class="text-gray-700">${level}</span>
-                </label>
-            `;
-            levelLayer.addTo(riskDataLayer);
-        });
+                
+                riskLayers[level] = layerGroup.addTo(map);
+                
+                filtersContainer.innerHTML += `
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" checked onchange="toggleLayer(this, 'risk', '${level}')" class="h-4 w-4 rounded accent-[${RISK_LEVELS[level].color}]">
+                        <span class="text-gray-700">${level}</span>
+                    </label>`;
+            }
+        } catch (error) {
+            console.error("Error al cargar los datos de riesgo:", error);
+            // Opcional: mostrar un mensaje de error al usuario
+        }
     }
-    
-    // --- LÓGICA DE CAPAS DE CONTEXTO ---
+
     async function loadContextLayers() {
-        const controls = document.getElementById('layer-controls');
+        const controlsContainer = document.getElementById('layer-controls');
         for (const layerInfo of LAYERS_CATALOG) {
             try {
                 const response = await fetch(layerInfo.file);
+                if (!response.ok) throw new Error(`No se pudo cargar ${layerInfo.file}`);
                 const geojsonData = await response.json();
                 
                 const layer = L.geoJSON(geojsonData, {
                     style: layerInfo.style,
-                    pointToLayer: (feature, latlng) => {
-                        // Estilo para los cuarteles de bomberos
-                        return L.marker(latlng, {
-                            icon: L.divIcon({
-                                html: '🚒',
-                                className: 'text-2xl',
-                                iconSize: [24, 24]
-                            })
-                        });
-                    }
+                    pointToLayer: (feature, latlng) => L.marker(latlng, { 
+                        icon: L.divIcon({ html: '🚒', className: 'text-2xl', iconSize: [24, 24] }) 
+                    })
                 });
-                contextLayers[layerInfo.name] = layer;
-                layerControl.addOverlay(layer, layerInfo.name);
+                contextLayers[layerInfo.name] = layer; // No se añade al mapa por defecto
 
+                controlsContainer.innerHTML += `
+                    <label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" onchange="toggleLayer(this, 'context', '${layerInfo.name}')" class="h-4 w-4 rounded">
+                        <span class="text-gray-700">${layerInfo.name}</span>
+                    </label>`;
             } catch (error) {
-                console.error(`Error cargando la capa ${layerInfo.name}:`, error);
+                console.error(`Error al cargar la capa ${layerInfo.name}:`, error);
+                controlsContainer.innerHTML += `<p class="text-xs text-red-600">No se pudo cargar: ${layerInfo.name}</p>`;
             }
         }
     }
 
-
-    function toggleLayer(layerName) {
-        if (map.hasLayer(contextLayers[layerName])) {
-            map.removeLayer(contextLayers[layerName]);
-        } else {
-            map.addLayer(contextLayers[layerName]);
+    function toggleLayer(checkbox, type, layerName) {
+        const layer = (type === 'risk') ? riskLayers[layerName] : contextLayers[layerName];
+        if (layer) {
+            if (checkbox.checked) {
+                map.addLayer(layer);
+            } else {
+                map.removeLayer(layer);
+            }
         }
     }
-    
-    // Carga inicial
-    document.addEventListener('DOMContentLoaded', () => {
-        // Necesitamos 'PapaParse' para leer el CSV
-        const script = document.createElement('script');
-        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js';
-        script.onload = async () => {
-            await loadRiskData();
-            await loadContextLayers();
-        };
-        document.head.appendChild(script);
-    });
-
 </script>
 </body>
 </html>
