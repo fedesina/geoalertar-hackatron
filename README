@@ -1,146 +1,382 @@
-GeoAlertAR Demo 🔥
-Sistema de Predicción y Visualización de Riesgo de Incendios Forestales para Córdoba, Argentina.
+🌍 GeoAlertAR Demo – NASA Space Apps Challenge
 
-Este proyecto es un prototipo funcional desarrollado para el NASA Space Apps Challenge. Su objetivo es demostrar cómo la combinación de datos satelitales de la NASA, pronósticos meteorológicos y datos geoespaciales locales puede generar un mapa de riesgo de incendios interactivo y de alto valor para la toma de decisiones.
 
-[Haz clic en la imagen para ver la demo en vivo]
 
----
 
-## ⚖️ Licencia
 
-Este proyecto se distribuye bajo una **Licencia Propietaria con Todos los Derechos Reservados**.
 
-**Copyright (c) 2025 Federico Nicolás Sinato**
 
-El código fuente y los diseños de este repositorio no pueden ser utilizados, copiados, modificados ni distribuidos, total o parcialmente, sin el consentimiento previo, expreso y por escrito del autor. Para consultas sobre licencias, por favor contactar al titular de los derechos.
 
-Consulte el archivo [LICENSE](LICENSE) para más detalles.
 
----
 
-🚀 Características Principales
-Mapa Interactivo: Visualizador basado en Leaflet con múltiples capas base, incluyendo imágenes satelitales de alta resolución de NASA GIBS y ESRI.
+🚀 Descripción
 
-Modelo de Riesgo Multi-Variable: El motor de análisis no solo usa datos de vegetación, sino que integra factores climáticos críticos como el viento y la humedad para un cálculo de riesgo mucho más preciso.
+GeoAlertAR Demo es un prototipo presentado en el NASA Space Apps Challenge 2025.
+El sistema combina datos satelitales (MODIS, CHIRPS, SRTM) y climáticos en tiempo real (Open-Meteo) para generar un índice de riesgo de incendios forestales en Córdoba, Argentina.
 
-Panel de Control Avanzado: Interfaz limpia con buscador de localidades, filtros de riesgo dinámicos y secciones colapsables.
+El objetivo es demostrar cómo la integración de ciencia de datos, observación de la Tierra y lógica física aplicada puede brindar un sistema de alerta temprana, validado científicamente y escalable a nivel nacional.
 
-Capas de Contexto: Permite superponer información geoespacial clave, como la ubicación de Cuarteles de Bomberos y los polígonos de Áreas Protegidas.
+📂 Estructura del Proyecto
+geoalertar_demo/
+├── datos_geo/                  # Datos geográficos de referencia
+│   └── puntos_cordoba.geojson
+│
+├── webapp/                     # Interfaz web (mapa interactivo)
+│   ├── layers/                 # Capas de contexto (áreas protegidas, bomberos, etc.)
+│   │   ├── Areas_Protegidas_Poligono.geojson
+│   │   └── Cuartel_Bomberos_Punto.geojson
+│   ├── index.html              # Frontend con Leaflet + Tailwind
+│   └── riesgo_cordoba.csv      # Resultados del análisis (generados por el script)
+│
+├── analizador_demo.py          # Script principal de análisis (GEE + Open-Meteo)
+└── estructura_proyecto.txt     # Resumen técnico
 
-Reportes de Inteligencia: Genera reportes detallados para cada punto de análisis, explicando el porqué del nivel de riesgo asignado.
+⚙️ Tecnologías Utilizadas
 
-Automatización: El sistema está diseñado para ser ejecutado con un solo comando, procesando todos los puntos y actualizando los datos para la web de forma automática.
+Google Earth Engine (GEE) – Procesamiento satelital masivo.
 
-🧠 ¿Cómo Funciona? La Lógica del Sistema
-El núcleo de GeoAlertAR es un modelo híbrido que combina el estado del "combustible" (la vegetación) con las condiciones meteorológicas del día.
+MODIS (NASA) – NDVI, NBR y temperatura superficial (LST).
 
-1. Fuentes de Datos
-El sistema se nutre de tres fuentes principales:
+CHIRPS – Precipitación acumulada (60 días).
 
-Dato Obtenido
+Open-Meteo API – Pronóstico de viento y humedad relativa.
 
-Fuente
+Python 3.x – Motor de análisis (Pandas, Requests, GeoJSON).
 
-Agencia / Proveedor
+Leaflet + TailwindCSS – Visualización web interactiva.
 
-Propósito en el Modelo
+📊 Variables Analizadas
 
-NDVI (Índice de Vegetación)
+🌱 NDVI (Normalized Difference Vegetation Index): Estado de la vegetación.
 
-Satélite Terra
+🔥 NBR (Normalized Burn Ratio): Estrés hídrico y detección de áreas quemadas.
 
-NASA (MODIS)
+🌡 LST (Land Surface Temperature): Temperatura superficial terrestre.
 
-Mide el verdor. Valores bajos = vegetación seca.
+☔ Precipitación acumulada (60 días): Nivel de sequía.
 
-NBR (Índice de Quemado)
+💨 Humedad relativa mínima: Influencia en la inflamabilidad del combustible.
 
-Satélite Terra
+🌬 Viento máximo (10m): Factor clave de propagación del fuego.
 
-NASA (MODIS)
+🧮 Lógica de Análisis
 
-Mide el estrés hídrico. Valores bajos = estrés alto.
+El riesgo final se calcula como combinación ponderada de índices satelitales y meteorológicos.
+Esta lógica está inspirada en modelos internacionales (FWI, EFFIS, NFDRS), adaptada a la realidad argentina y a los datos disponibles.
 
-LST (Temp. Superficial)
+1. Factores satelitales
 
-Satélite Terra
+Riesgo NDVI
 
-NASA (MODIS)
+𝑅
+𝑁
+𝐷
+𝑉
+𝐼
+=
+1
+−
+𝑁
+𝐷
+𝑉
+𝐼
+−
+0.1
+0.5
+R
+NDVI
+	​
 
-El calor del suelo acelera el secado.
+=1−
+0.5
+NDVI−0.1
+	​
 
-Precipitación Acumulada
 
-Satélites varios
+Riesgo NBR
 
-CHIRPS
+𝑅
+𝑁
+𝐵
+𝑅
+=
+1
+−
+𝑁
+𝐵
+𝑅
+−
+0.0
+0.5
+R
+NBR
+	​
 
-Mide la sequía a largo plazo (60 días).
+=1−
+0.5
+NBR−0.0
+	​
 
-Viento y Humedad Relativa
 
-Modelo de Pronóstico
+Riesgo Temperatura (LST)
 
-Open-Meteo
+𝑅
+𝐿
+𝑆
+𝑇
+=
+𝐿
+𝑆
+𝑇
+−
+15
+30
+R
+LST
+	​
 
-Son los aceleradores del fuego. ¡Factores críticos!
+=
+30
+LST−15
+	​
 
-2. El Cálculo del Riesgo
-El riesgo no es un valor único, sino el resultado de una fórmula ponderada que le da más importancia a los factores más peligrosos:
 
-Riesgo Base (40%): Lo determina el estado del combustible y la sequía (NBR y Precipitación).
+Riesgo Precipitación (60d)
 
-Aceleradores del Día (60%): Lo determinan las condiciones meteorológicas del pronóstico (Viento y Humedad).
+𝑅
+𝑃
+𝑟
+𝑒
+𝑐
+=
+1
+−
+𝑃
+𝑟
+𝑒
+𝑐
+60
+𝑑
+−
+10
+140
+R
+Prec
+	​
 
-La fórmula simplificada es:
-Riesgo = (f(NBR) * 25%) + (f(Precip) * 10%) + (f(Humedad) * 30%) + (f(Viento) * 25%) + ...
+=1−
+140
+Prec
+60d
+	​
 
-Un día con vegetación seca es peligroso, pero si además se le suma viento fuerte y baja humedad, el riesgo se vuelve CRÍTICO. El modelo refleja esta realidad.
+−10
+	​
 
-📁 Estructura del Proyecto
-/
-├── analizador_hackathon.py   # El motor que obtiene y procesa todos los datos.
-├── datos_geo/
-│   └── puntos_cordoba.geojson  # Los 80 puntos geográficos a analizar.
-└── docs/
-    ├── index.html              # La página web principal (el visualizador).
-    ├── riesgo_cordoba.csv      # El archivo de salida del analizador, leído por la web.
-    └── layers/
-        ├── Areas_Protegidas_Poligono.geojson
-        └── Cuartel_Bomberos_Punto.geojson
+2. Factores meteorológicos
 
-🛠️ Cómo Ejecutar el Sistema Localmente
-Para correr el proyecto en tu propia máquina, sigue estos pasos:
+Riesgo Humedad relativa mínima
 
-Pre-requisitos:
+𝑅
+𝐻
+𝑢
+𝑚
+=
+1
+−
+𝐻
+𝑅
+𝑚
+𝑖
+𝑛
+−
+15
+65
+R
+Hum
+	​
 
-Tener Python 3 instalado.
+=1−
+65
+HR
+min
+	​
 
-Una cuenta de Google con acceso a Google Earth Engine.
+−15
+	​
 
-Pasos:
 
-Clona el repositorio:
+Riesgo Viento máximo
 
-git clone [https://github.com/fedesina/geoalertar-hackatron.git](https://github.com/fedesina/geoalertar-hackatron.git)
-cd geoalertar-hackatron
+𝑅
+𝑉
+𝑖
+𝑒
+𝑛
+𝑡
+𝑜
+=
+𝑉
+𝑚
+𝑎
+𝑥
+−
+10
+50
+R
+Viento
+	​
 
-Crea un entorno virtual e instala las dependencias:
+=
+50
+V
+max
+	​
 
-python -m venv .venv
-source .venv/bin/activate  # En Windows: .\.venv\Scripts\activate
-pip install earthengine-api pandas geojson requests
+−10
+	​
 
-Autentica tu cuenta de Google Earth Engine:
-La primera vez que lo ejecutes, te pedirá autenticar. Sigue las instrucciones en el navegador.
+3. Combinación ponderada
 
-earthengine authenticate
+El riesgo final (0–100) es:
 
-Ejecuta el analizador:
-Este comando hará todo el trabajo: se conectará a los satélites, obtendrá el clima, calculará el riesgo y generará el archivo riesgo_cordoba.csv dentro de la carpeta docs.
+𝑅
+𝑖
+𝑒
+𝑠
+𝑔
+𝑜
+=
+(
+𝑅
+𝑁
+𝐵
+𝑅
+⋅
+0.25
+)
++
+(
+𝑅
+𝑃
+𝑟
+𝑒
+𝑐
+⋅
+0.10
+)
++
+(
+𝑅
+𝐻
+𝑢
+𝑚
+⋅
+0.30
+)
++
+(
+𝑅
+𝑉
+𝑖
+𝑒
+𝑛
+𝑡
+𝑜
+⋅
+0.25
+)
++
+(
+𝑅
+𝐿
+𝑆
+𝑇
+⋅
+0.05
+)
++
+(
+𝑅
+𝑁
+𝐷
+𝑉
+𝐼
+⋅
+0.05
+)
+Riesgo=(R
+NBR
+	​
 
-python analizador_hackathon.py
+⋅0.25)+(R
+Prec
+	​
 
-Visualiza el resultado:
-Abre el archivo docs/index.html en tu navegador web. ¡Y listo! Verás el mapa interactivo con los datos recién generados.
+⋅0.10)+(R
+Hum
+	​
+
+⋅0.30)+(R
+Viento
+	​
+
+⋅0.25)+(R
+LST
+	​
+
+⋅0.05)+(R
+NDVI
+	​
+
+⋅0.05)
+🔥 Clasificación de Riesgo
+
+🟢 BAJO: <25
+
+🟡 MODERADO: 25–49
+
+🟠 ALTO: 50–74
+
+🔴 CRÍTICO: ≥75
+
+🗺️ Interfaz Web
+
+Visualización en mapa interactivo Leaflet.
+
+Filtros dinámicos por nivel de riesgo.
+
+Capas contextuales: Áreas Protegidas + Cuarteles de Bomberos.
+
+Reportes emergentes con factores detallados: temperatura, viento, humedad, NBR y precipitación.
+
+📌 Aplicaciones
+
+Prevención y alerta temprana de incendios forestales.
+
+Apoyo directo a bomberos, brigadistas y protección civil.
+
+Protección de áreas naturales y comunidades vulnerables.
+
+Escalabilidad a otras provincias y países de Latinoamérica.
+
+📚 Referencias Científicas
+
+Van Wagner, C.E. (1987). Development and structure of the Canadian Forest Fire Weather Index System. Forestry Technical Report 35.
+
+San-Miguel-Ayanz, J. et al. (2012). Comprehensive Monitoring of Wildfires in Europe: The European Forest Fire Information System (EFFIS).
+
+Andrews, P.L. et al. (2007). The US Fire Danger Rating System. USDA Forest Service.
+
+Dowdy, A.J. (2018). Climatological variability of fire weather in Australia. International Journal of Climatology.
+
+NASA ARSET Training (2023). Introduction to Remote Sensing for Wildfire Applications.
+
+CHIRPS: Climate Hazards Group InfraRed Precipitation with Station Data (UC Santa Barbara).
+
+Open-Meteo API: Open weather forecast data for research and applications.
+
+👨‍💻 Autor
+
+Federico Nicolás Sinato – Argentina, 2025
+Proyecto GeoAlertAR 🌍🔥
