@@ -15,11 +15,7 @@
         :root { --panel-width: 384px; }
         html, body { height: 100vh; overflow: hidden; font-family: Inter, system-ui, sans-serif; }
         #map { width: 100%; height: 100%; }
-        .info-panel {
-            width: var(--panel-width);
-            max-height: calc(100% - 2rem);
-            transition: transform 0.3s ease-in-out;
-        }
+        .info-panel { width: var(--panel-width); max-height: calc(100% - 2rem); transition: transform 0.3s ease-in-out; }
         .leaflet-div-icon { background: transparent; border: 0; }
         .custom-popup .leaflet-popup-content-wrapper { background-color: rgba(255, 255, 255, 0.9); backdrop-filter: blur(5px); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         .custom-popup .leaflet-popup-content { margin: 14px; font-size: 14px; }
@@ -60,98 +56,64 @@
     </aside>
 
     <div id="modal-bg" class="hidden fixed inset-0 bg-black/50 z-[2000] flex items-center justify-center p-4 transition-opacity duration-300 opacity-0">
-        <div id="modal-content" class="bg-white rounded-lg shadow-xl w-full max-w-2xl transform transition-all duration-300 scale-95 overflow-y-auto modal-content">
-            </div>
+        <div id="modal-content" class="bg-white rounded-lg shadow-xl w-full max-w-2xl transform transition-all duration-300 scale-95 overflow-y-auto modal-content"></div>
     </div>
 
 <script>
-    // --- CONFIGURACIÓN GLOBAL ---
     const CONFIG = {
         CSV_URL: 'riesgo_cordoba.csv',
         MAP_CENTER: [-31.5, -64.2],
         MAP_ZOOM: 7,
-        RISK_LEVELS: {
-            "CRÍTICO": { color: "#ef4444" }, "ALTO": { color: "#f97316" },
-            "MODERADO": { color: "#facc15" }, "BAJO": { color: "#22c55e" },
-            "DATOS INSUFICENTES": { color: "#9ca3af" }
-        },
-        CONTEXT_LAYERS: [
-            { name: 'Áreas Protegidas', file: 'layers/Areas_Protegidas_Poligono.geojson', style: { color: "#16a34a", weight: 2, opacity: 0.8, fillOpacity: 0.15 } },
-            { name: 'Cuarteles de Bomberos', file: 'layers/Cuartel_Bomberos_Punto.geojson' }
-        ]
+        RISK_LEVELS: { "CRÍTICO": { color: "#ef4444" }, "ALTO": { color: "#f97316" }, "MODERADO": { color: "#facc15" }, "BAJO": { color: "#22c55e" }, "DATOS INSUFICENTES": { color: "#9ca3af" } },
+        CONTEXT_LAYERS: [ { name: 'Áreas Protegidas', file: 'layers/Areas_Protegidas_Poligono.geojson', style: { color: "#16a34a", weight: 2, opacity: 0.8, fillOpacity: 0.15 } }, { name: 'Cuarteles de Bomberos', file: 'layers/Cuartel_Bomberos_Punto.geojson' } ]
     };
 
-    // --- ALMACENAMIENTO DE ESTADO ---
     let allPointsData = [];
-    const mapLayers = {
-        risk: {},
-        context: {}
-    };
+    const mapLayers = { context: {} };
     let pointMarkersLayer = L.layerGroup();
     
-    // --- INICIALIZACIÓN DEL MAPA ---
     const map = L.map('map').setView(CONFIG.MAP_CENTER, CONFIG.MAP_ZOOM);
-    
     const baseLayers = {
-        "ESRI Satélite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-            attribution: '© Esri'
-        }).addTo(map),
-        "NASA Satélite": L.tileLayer(
-            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg',
-            { attribution: '© NASA GIBS', maxZoom: 9 }
-        ),
-        "Mapa Oscuro": L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-            attribution: '© CartoDB'
-        }),
-        "Calles": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap'
-        })
+        "ESRI Satélite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri' }).addTo(map),
+        "NASA Satélite": L.tileLayer('https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg', { attribution: '© NASA GIBS', maxZoom: 9 }),
+        "Mapa Oscuro": L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© CartoDB' }),
+        "Calles": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' })
     };
-
     L.control.layers(baseLayers).addTo(map);
 
-    // --- LÓGICA PRINCIPAL ---
     document.addEventListener('DOMContentLoaded', async () => {
         await loadRiskData();
         buildRiskFilters();
         drawPointsOnMap();
-
         await loadContextLayers();
         buildLayerControls();
-        
         setupEventListeners();
     });
 
     async function loadRiskData() {
         try {
             const response = await fetch(CONFIG.CSV_URL);
-            if (!response.ok) throw new Error(`HTTP ${response.status} - No se pudo cargar ${CONFIG.CSV_URL}`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const text = await response.text();
             allPointsData = Papa.parse(text, { header: true }).data.filter(p => p.lat && p.lon);
         } catch (error) {
-            console.error("Error crítico al cargar datos de riesgo:", error);
-            alert("No se pudieron cargar los datos de riesgo. Verifique el archivo riesgo_cordoba.csv y su contenido.");
+            console.error("Error al cargar datos de riesgo:", error);
+            alert("No se pudieron cargar los datos de riesgo.");
         }
     }
 
     function buildRiskFilters() {
-        const container = document.getElementById('risk-filters');
-        container.innerHTML = Object.keys(CONFIG.RISK_LEVELS).map(level => `
+        document.getElementById('risk-filters').innerHTML = Object.keys(CONFIG.RISK_LEVELS).map(level => `
             <label class="flex items-center space-x-2 cursor-pointer">
                 <input type="checkbox" checked class="risk-toggle h-4 w-4 rounded" data-level="${level}" style="accent-color: ${CONFIG.RISK_LEVELS[level].color};">
                 <span class="text-gray-700">${level}</span>
-            </label>
-        `).join('');
+            </label>`).join('');
     }
 
     function drawPointsOnMap(filterText = '') {
         pointMarkersLayer.clearLayers();
-        
-        const activeLevels = getActiveRiskLevels();
-        const filteredPoints = allPointsData.filter(p => 
-            activeLevels.includes(p.nivel) &&
-            p.nombre.toLowerCase().includes(filterText.toLowerCase())
-        );
+        const activeLevels = Array.from(document.querySelectorAll('.risk-toggle:checked')).map(cb => cb.dataset.level);
+        const filteredPoints = allPointsData.filter(p => activeLevels.includes(p.nivel) && p.nombre.toLowerCase().includes(filterText.toLowerCase()));
 
         filteredPoints.forEach(point => {
             const config = CONFIG.RISK_LEVELS[point.nivel];
@@ -159,58 +121,35 @@
                 radius: 7, fillColor: config.color, color: "#1f2937",
                 weight: 1.5, opacity: 1, fillOpacity: 0.9
             }).bindPopup('', { className: 'custom-popup' });
-
-            marker.on('click', function(e) {
-                this.setPopupContent(createPopupContent(point));
-                this.openPopup();
-            });
-            
+            marker.on('click', function(e) { this.setPopupContent(createPopupContent(point)).openPopup(); });
             marker.addTo(pointMarkersLayer);
         });
-        
-        if (!map.hasLayer(pointMarkersLayer)) {
-            pointMarkersLayer.addTo(map);
-        }
+        if (!map.hasLayer(pointMarkersLayer)) pointMarkersLayer.addTo(map);
     }
     
     function createPopupContent(point) {
         const config = CONFIG.RISK_LEVELS[point.nivel];
-        const tempDisplay = parseFloat(point.lst_celsius) > 0 ? `${point.lst_celsius}°C` : 'N/A';
-        
         const content = document.createElement('div');
         content.className = 'space-y-2';
-        content.innerHTML = `
-            <h3 class="text-base font-bold text-gray-800">${point.nombre}</h3>
-            <p class="font-semibold text-sm" style="color:${config.color};">${point.nivel} (${point.riesgo_final}%)</p>
-        `;
+        content.innerHTML = `<h3 class="text-base font-bold text-gray-800">${point.nombre}</h3><p class="font-semibold text-sm" style="color:${config.color};">${point.nivel} (${point.riesgo_final}%)</p>`;
         const button = document.createElement('button');
         button.className = 'w-full text-sm bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-blue-700 transition';
         button.innerText = '📄 Generar Reporte';
         button.onclick = () => showReportModal(point);
-        
         content.appendChild(button);
         return content;
-    }
-
-    function getActiveRiskLevels() {
-        const active = [];
-        document.querySelectorAll('.risk-toggle:checked').forEach(cb => active.push(cb.dataset.level));
-        return active;
     }
     
     async function loadContextLayers() {
         for (const layerInfo of CONFIG.CONTEXT_LAYERS) {
             try {
                 const response = await fetch(layerInfo.file);
-                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const geojsonData = await response.json();
-                const layer = L.geoJSON(geojsonData, {
+                mapLayers.context[layerInfo.name] = L.geoJSON(geojsonData, {
                     style: layerInfo.style,
-                    pointToLayer: (feature, latlng) => L.marker(latlng, { 
-                        icon: L.divIcon({ html: '🚒', className: 'text-2xl', iconSize: [24, 24] }) 
-                    })
+                    pointToLayer: (f, l) => L.marker(l, { icon: L.divIcon({ html: '🚒', className: 'text-2xl' }) })
                 });
-                mapLayers.context[layerInfo.name] = layer;
             } catch (error) {
                 console.error(`Error cargando capa ${layerInfo.name}:`, error);
                 mapLayers.context[layerInfo.name] = null;
@@ -219,33 +158,26 @@
     }
     
     function buildLayerControls() {
-        const container = document.getElementById('layer-controls');
-        container.innerHTML = CONFIG.CONTEXT_LAYERS.map(l => {
+        document.getElementById('layer-controls').innerHTML = CONFIG.CONTEXT_LAYERS.map(l => {
             const isFailed = mapLayers.context[l.name] === null;
-            return `
-            <label class="flex items-center space-x-2 ${isFailed ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer'}">
+            return `<label class="flex items-center space-x-2 ${isFailed ? 'cursor-not-allowed text-gray-400' : 'cursor-pointer'}">
                 <input type="checkbox" class="context-toggle h-4 w-4 rounded" data-name="${l.name}" ${isFailed ? 'disabled' : ''}>
                 <span class="${isFailed ? 'italic' : ''}">${l.name} ${isFailed ? '(falló)' : ''}</span>
-            </label>
-        `}).join('');
+            </label>`}).join('');
     }
     
     function setupEventListeners() {
-        document.getElementById('search-box').addEventListener('input', (e) => drawPointsOnMap(e.target.value));
-        document.getElementById('risk-filters').addEventListener('change', () => drawPointsOnMap(document.getElementById('search-box').value));
+        const searchBox = document.getElementById('search-box');
+        document.getElementById('risk-filters').addEventListener('change', () => drawPointsOnMap(searchBox.value));
         document.getElementById('layer-controls').addEventListener('change', (e) => {
             if (e.target.classList.contains('context-toggle')) {
-                const layerName = e.target.dataset.name;
-                const layer = mapLayers.context[layerName];
-                if (layer) {
-                    if (e.target.checked) map.addLayer(layer);
-                    else map.removeLayer(layer);
-                }
+                const layer = mapLayers.context[e.target.dataset.name];
+                if (layer) e.target.checked ? map.addLayer(layer) : map.removeLayer(layer);
             }
         });
+        searchBox.addEventListener('input', (e) => drawPointsOnMap(e.target.value));
     }
 
-    // --- LÓGICA DE VENTANAS MODALES ---
     function openModal() {
         const modalBg = document.getElementById('modal-bg');
         modalBg.classList.remove('hidden');
@@ -257,16 +189,17 @@
     
     function closeModal() {
         const modalBg = document.getElementById('modal-bg');
-        const modalContent = document.getElementById('modal-content');
         modalBg.classList.add('opacity-0');
-        modalContent.classList.add('scale-95');
+        document.getElementById('modal-content').classList.add('scale-95');
         setTimeout(() => modalBg.classList.add('hidden'), 300);
     }
 
     function showReportModal(point) {
         const modalContent = document.getElementById('modal-content');
         const config = CONFIG.RISK_LEVELS[point.nivel];
-        const tempDisplay = parseFloat(point.lst_celsius) > 0 ? `${point.lst_celsius}°C` : 'Dato no disponible';
+        const tempDisplay = parseFloat(point.lst_celsius) > 0 ? `${point.lst_celsius}°C` : 'N/A';
+        const vientoDisplay = point.viento_max_kmh ? `${parseFloat(point.viento_max_kmh).toFixed(1)} km/h` : 'N/A';
+        const humedadDisplay = point.humedad_min ? `${parseFloat(point.humedad_min).toFixed(0)}%` : 'N/A';
 
         modalContent.innerHTML = `
             <div class="p-6">
@@ -277,35 +210,27 @@
                     </div>
                     <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-3xl font-light">&times;</button>
                 </div>
-                
                 <div class="bg-gray-50 p-4 rounded-lg mb-4">
                     <h3 class="text-sm font-semibold text-gray-500 uppercase">Riesgo General</h3>
                     <p class="text-3xl font-bold" style="color:${config.color};">${point.nivel} (${point.riesgo_final}%)</p>
                 </div>
-
                 <div class="grid md:grid-cols-2 gap-4 text-sm">
-                    <div class="bg-blue-50 p-3 rounded-lg">
-                        <h4 class="font-bold text-blue-800">🌡️ Condiciones Atmosféricas</h4>
-                        <p><strong>Temp. Superficial:</strong> ${tempDisplay}</p>
-                        <p class="text-xs text-blue-600 mt-1">Temperaturas elevadas secan el combustible vegetal.</p>
+                    <div class="md:col-span-2 bg-blue-50 p-3 rounded-lg">
+                        <h4 class="font-bold text-blue-800">🌡️ Pronóstico del Día (Factores Clave)</h4>
+                        <div class="grid grid-cols-2 gap-4 mt-1">
+                            <div><p><strong>Viento Máx:</strong> ${vientoDisplay}</p><p class="text-xs text-blue-600 mt-1">Acelera la propagación del fuego.</p></div>
+                            <div><p><strong>Humedad Mín:</strong> ${humedadDisplay}</p><p class="text-xs text-blue-600 mt-1">Aire seco deshidrata el combustible.</p></div>
+                        </div>
+                    </div>
+                    <div class="bg-yellow-50 p-3 rounded-lg">
+                        <h4 class="font-bold text-yellow-800">🌱 Estado del Combustible</h4>
+                        <p><strong>Índice NBR:</strong> ${point.nbr}</p>
+                        <p class="text-xs text-yellow-600 mt-1">Mide el estrés hídrico de la vegetación.</p>
                     </div>
                     <div class="bg-green-50 p-3 rounded-lg">
-                        <h4 class="font-bold text-green-800">💧 Condiciones de Sequía</h4>
-                        <p><strong>Precipitación (60d):</strong> ${point.precip_60d_mm} mm</p>
-                        <p class="text-xs text-green-600 mt-1">La falta de lluvia reciente genera estrés hídrico.</p>
-                    </div>
-                    <div class="md:col-span-2 bg-yellow-50 p-3 rounded-lg">
-                        <h4 class="font-bold text-yellow-800">🌱 Estado del Combustible (Vegetación)</h4>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <p><strong>Índice NDVI:</strong> ${point.ndvi}</p>
-                                <p class="text-xs text-yellow-600 mt-1">Valores bajos indican vegetación seca o escasa.</p>
-                            </div>
-                            <div>
-                                <p><strong>Índice NBR:</strong> ${point.nbr}</p>
-                                <p class="text-xs text-yellow-600 mt-1">Valores bajos sugieren estrés hídrico severo.</p>
-                            </div>
-                        </div>
+                        <h4 class="font-bold text-green-800">💧 Sequía Acumulada</h4>
+                        <p><strong>Precip (60d):</strong> ${point.precip_60d_mm} mm</p>
+                        <p class="text-xs text-green-600 mt-1">Indica la reserva de agua en el suelo.</p>
                     </div>
                 </div>
             </div>`;
@@ -313,38 +238,25 @@
     }
     
     function showAboutModal() {
-        const modalContent = document.getElementById('modal-content');
-        modalContent.innerHTML = `
+        document.getElementById('modal-content').innerHTML = `
             <div class="p-6">
                 <div class="flex justify-between items-start mb-4">
                     <h2 class="text-2xl font-bold text-gray-900">📖 Sobre GeoAlertAR Demo</h2>
                     <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 text-3xl font-light">&times;</button>
                 </div>
-                
                 <div class="space-y-4 text-sm text-gray-700">
-                    <p><strong>GeoAlertAR Demo</strong> es un prototipo desarrollado para el <strong>NASA Space Apps Challenge</strong> que demuestra un sistema de predicción de riesgo de incendios forestales para la provincia de Córdoba, Argentina.</p>
-                    
+                    <p><strong>GeoAlertAR Demo</strong> es un prototipo para el <strong>NASA Space Apps Challenge</strong> que demuestra un sistema de predicción de riesgo de incendios forestales para Córdoba, Argentina.</p>
                     <div>
-                        <h3 class="font-bold text-gray-800">🛰️ Fuentes de Datos Satelitales</h3>
+                        <h3 class="font-bold text-gray-800">🛰️ Fuentes de Datos</h3>
                         <ul class="list-disc list-inside mt-1 space-y-1">
-                            <li><strong>Terra/MODIS (NASA):</strong> Se utilizan para obtener tres indicadores clave:
-                                <ul class="list-['-_'] list-inside ml-4">
-                                    <li><strong>NDVI:</strong> Mide el verdor y la salud de la vegetación (el "combustible").</li>
-                                    <li><strong>NBR:</strong> Indica el estrés hídrico. Valores bajos sugieren vegetación seca.</li>
-                                    <li><strong>LST:</strong> Mide la Temperatura de la Superficie Terrestre.</li>
-                                </ul>
-                            </li>
-                            <li><strong>CHIRPS (Climate Hazards Group):</strong> Provee datos de precipitación para calcular la sequía acumulada en los últimos 60 días.</li>
+                            <li><strong>Terra/MODIS (NASA):</strong> Para NDVI, NBR y Temperatura de Superficie (LST).</li>
+                            <li><strong>CHIRPS (Climate Hazards Group):</strong> Para datos de precipitación.</li>
+                            <li><strong>Open-Meteo API:</strong> Para pronósticos de Viento y Humedad Relativa.</li>
                         </ul>
                     </div>
-
                     <div>
-                        <h3 class="font-bold text-gray-800">🧠 Lógica del Sistema</h3>
-                        <p>El riesgo de incendio se calcula combinando las cuatro variables satelitales. La fórmula pondera cada factor para determinar un puntaje de riesgo final:</p>
-                        <p class="mt-2 p-2 bg-gray-100 rounded">
-                            <span class="font-mono text-xs">Riesgo = (f(NDVI) * 15%) + (f(NBR) * 35%) + (f(LST) * 30%) + (f(Precip) * 20%)</span>
-                        </p>
-                        <p class="mt-1">Un NBR y NDVI bajos, combinados con una LST alta y baja precipitación, resultan en un nivel de riesgo <strong>CRÍTICO</strong>.</p>
+                        <h3 class="font-bold text-gray-800"> Lógica del Sistema</h3>
+                        <p>El riesgo se calcula combinando variables satelitales y climáticas. La fórmula pondera cada factor, dando especial importancia al viento y la humedad, para determinar un puntaje de riesgo final y un nivel de alerta.</p>
                     </div>
                 </div>
             </div>`;

@@ -1,0 +1,146 @@
+GeoAlertAR Demo 🔥
+Sistema de Predicción y Visualización de Riesgo de Incendios Forestales para Córdoba, Argentina.
+
+Este proyecto es un prototipo funcional desarrollado para el NASA Space Apps Challenge. Su objetivo es demostrar cómo la combinación de datos satelitales de la NASA, pronósticos meteorológicos y datos geoespaciales locales puede generar un mapa de riesgo de incendios interactivo y de alto valor para la toma de decisiones.
+
+[Haz clic en la imagen para ver la demo en vivo]
+
+---
+
+## ⚖️ Licencia
+
+Este proyecto se distribuye bajo una **Licencia Propietaria con Todos los Derechos Reservados**.
+
+**Copyright (c) 2025 Federico Nicolás Sinato**
+
+El código fuente y los diseños de este repositorio no pueden ser utilizados, copiados, modificados ni distribuidos, total o parcialmente, sin el consentimiento previo, expreso y por escrito del autor. Para consultas sobre licencias, por favor contactar al titular de los derechos.
+
+Consulte el archivo [LICENSE](LICENSE) para más detalles.
+
+---
+
+🚀 Características Principales
+Mapa Interactivo: Visualizador basado en Leaflet con múltiples capas base, incluyendo imágenes satelitales de alta resolución de NASA GIBS y ESRI.
+
+Modelo de Riesgo Multi-Variable: El motor de análisis no solo usa datos de vegetación, sino que integra factores climáticos críticos como el viento y la humedad para un cálculo de riesgo mucho más preciso.
+
+Panel de Control Avanzado: Interfaz limpia con buscador de localidades, filtros de riesgo dinámicos y secciones colapsables.
+
+Capas de Contexto: Permite superponer información geoespacial clave, como la ubicación de Cuarteles de Bomberos y los polígonos de Áreas Protegidas.
+
+Reportes de Inteligencia: Genera reportes detallados para cada punto de análisis, explicando el porqué del nivel de riesgo asignado.
+
+Automatización: El sistema está diseñado para ser ejecutado con un solo comando, procesando todos los puntos y actualizando los datos para la web de forma automática.
+
+🧠 ¿Cómo Funciona? La Lógica del Sistema
+El núcleo de GeoAlertAR es un modelo híbrido que combina el estado del "combustible" (la vegetación) con las condiciones meteorológicas del día.
+
+1. Fuentes de Datos
+El sistema se nutre de tres fuentes principales:
+
+Dato Obtenido
+
+Fuente
+
+Agencia / Proveedor
+
+Propósito en el Modelo
+
+NDVI (Índice de Vegetación)
+
+Satélite Terra
+
+NASA (MODIS)
+
+Mide el verdor. Valores bajos = vegetación seca.
+
+NBR (Índice de Quemado)
+
+Satélite Terra
+
+NASA (MODIS)
+
+Mide el estrés hídrico. Valores bajos = estrés alto.
+
+LST (Temp. Superficial)
+
+Satélite Terra
+
+NASA (MODIS)
+
+El calor del suelo acelera el secado.
+
+Precipitación Acumulada
+
+Satélites varios
+
+CHIRPS
+
+Mide la sequía a largo plazo (60 días).
+
+Viento y Humedad Relativa
+
+Modelo de Pronóstico
+
+Open-Meteo
+
+Son los aceleradores del fuego. ¡Factores críticos!
+
+2. El Cálculo del Riesgo
+El riesgo no es un valor único, sino el resultado de una fórmula ponderada que le da más importancia a los factores más peligrosos:
+
+Riesgo Base (40%): Lo determina el estado del combustible y la sequía (NBR y Precipitación).
+
+Aceleradores del Día (60%): Lo determinan las condiciones meteorológicas del pronóstico (Viento y Humedad).
+
+La fórmula simplificada es:
+Riesgo = (f(NBR) * 25%) + (f(Precip) * 10%) + (f(Humedad) * 30%) + (f(Viento) * 25%) + ...
+
+Un día con vegetación seca es peligroso, pero si además se le suma viento fuerte y baja humedad, el riesgo se vuelve CRÍTICO. El modelo refleja esta realidad.
+
+📁 Estructura del Proyecto
+/
+├── analizador_hackathon.py   # El motor que obtiene y procesa todos los datos.
+├── datos_geo/
+│   └── puntos_cordoba.geojson  # Los 80 puntos geográficos a analizar.
+└── docs/
+    ├── index.html              # La página web principal (el visualizador).
+    ├── riesgo_cordoba.csv      # El archivo de salida del analizador, leído por la web.
+    └── layers/
+        ├── Areas_Protegidas_Poligono.geojson
+        └── Cuartel_Bomberos_Punto.geojson
+
+🛠️ Cómo Ejecutar el Sistema Localmente
+Para correr el proyecto en tu propia máquina, sigue estos pasos:
+
+Pre-requisitos:
+
+Tener Python 3 instalado.
+
+Una cuenta de Google con acceso a Google Earth Engine.
+
+Pasos:
+
+Clona el repositorio:
+
+git clone [https://github.com/fedesina/geoalertar-hackatron.git](https://github.com/fedesina/geoalertar-hackatron.git)
+cd geoalertar-hackatron
+
+Crea un entorno virtual e instala las dependencias:
+
+python -m venv .venv
+source .venv/bin/activate  # En Windows: .\.venv\Scripts\activate
+pip install earthengine-api pandas geojson requests
+
+Autentica tu cuenta de Google Earth Engine:
+La primera vez que lo ejecutes, te pedirá autenticar. Sigue las instrucciones en el navegador.
+
+earthengine authenticate
+
+Ejecuta el analizador:
+Este comando hará todo el trabajo: se conectará a los satélites, obtendrá el clima, calculará el riesgo y generará el archivo riesgo_cordoba.csv dentro de la carpeta docs.
+
+python analizador_hackathon.py
+
+Visualiza el resultado:
+Abre el archivo docs/index.html en tu navegador web. ¡Y listo! Verás el mapa interactivo con los datos recién generados.
