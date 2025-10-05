@@ -1,192 +1,298 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GeoAlertAR Demo - NASA Space Apps</title>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
-    
-    <!-- Librerías -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>GeoAlertAR Demo - NASA Space Apps</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔥</text></svg>">
 
-    <style>
-        :root { --panel-width: 384px; }
-        html, body { height: 100vh; overflow: hidden; font-family: Inter, system-ui, sans-serif; }
-        #map { width: 100%; height: 100%; background: #1f2937; }
-        .info-panel { width: var(--panel-width); max-height: calc(100% - 2rem); }
-        .highlighted-feature { stroke: #00ffff !important; stroke-width: 3 !important; stroke-opacity: 1 !important; }
-    </style>
+  <!-- Librerías -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    :root { --panel-width: 384px; }
+    html, body { height: 100vh; overflow: hidden; font-family: Inter, system-ui, sans-serif; }
+    #map { width: 100%; height: 100%; background: #1f2937; }
+    .info-panel { width: var(--panel-width); max-height: calc(100% - 2rem); }
+    .highlighted-feature { stroke: #00ffff !important; stroke-width: 3 !important; stroke-opacity: 1 !important; }
+  </style>
 </head>
 <body class="bg-gray-800">
-    <div id="map"></div>
-    <aside class="info-panel absolute top-4 left-4 z-[1000] bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-2xl flex flex-col space-y-4">
-        <header>
-            <h1 class="text-2xl font-bold text-gray-900">🔥 GeoAlertAR Demo</h1>
-            <p class="text-sm text-gray-600">Análisis de Riesgo de Incendios - Córdoba, AR</p>
-        </header>
-        <div class="flex-grow overflow-y-auto pr-2 space-y-3">
-            <details open><summary class="font-semibold text-gray-800 cursor-pointer">Niveles de Riesgo</summary><div id="risk-filters" class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm pt-2"></div></details>
-            <details><summary class="font-semibold text-gray-800 cursor-pointer">Capas de Contexto</summary><div id="layer-controls" class="space-y-2 text-sm pt-2"></div></details>
-        </div>
-        <div class="border-t pt-3"><button onclick="showAboutModal()" class="w-full text-sm bg-gray-200 text-gray-800 px-3 py-2 rounded-md hover:bg-gray-300">📖 Sobre el Proyecto</button></div>
-    </aside>
-    <div id="modal-bg" class="hidden fixed inset-0 bg-black/50 z-[2000] flex items-center justify-center p-4"><div id="modal-content" class="bg-white rounded-lg shadow-xl w-full max-w-2xl overflow-y-auto" style="max-height: calc(100vh - 4rem);"></div></div>
+  <div id="map"></div>
 
-<script>
+  <aside class="info-panel absolute top-4 left-4 z-[1000] bg-white/80 backdrop-blur-sm p-4 rounded-lg shadow-2xl flex flex-col space-y-4">
+    <header>
+      <h1 class="text-2xl font-bold text-gray-900">🔥 GeoAlertAR Demo</h1>
+      <p class="text-sm text-gray-600">Análisis de Riesgo de Incendios - Córdoba, AR</p>
+    </header>
+
+    <div class="flex-grow overflow-y-auto pr-2 space-y-3">
+      <details open>
+        <summary class="font-semibold text-gray-800 cursor-pointer">Niveles de Riesgo</summary>
+        <div id="risk-filters" class="grid grid-cols-2 gap-x-4 gap-y-2 text-sm pt-2"></div>
+      </details>
+
+      <details>
+        <summary class="font-semibold text-gray-800 cursor-pointer">Capas de Contexto</summary>
+        <div id="layer-controls" class="space-y-2 text-sm pt-2"></div>
+      </details>
+    </div>
+
+    <div class="border-t pt-3">
+      <button onclick="showAboutModal()" class="w-full text-sm bg-gray-200 text-gray-800 px-3 py-2 rounded-md hover:bg-gray-300">📖 Sobre el Proyecto</button>
+    </div>
+  </aside>
+
+  <!-- Modal -->
+  <div id="modal-bg" class="hidden fixed inset-0 bg-black/50 z-[2000] flex items-center justify-center p-4">
+    <div id="modal-content" class="bg-white rounded-lg shadow-xl w-full max-w-2xl overflow-y-auto" style="max-height: calc(100vh - 4rem);"></div>
+  </div>
+
+  <script>
+    // ---------------- CONFIG ----------------
     const CONFIG = {
-        GEOJSON_URL: 'riesgo_hexagonos.geojson',
-        MAP_CENTER: [-32.0, -64.0],
-        MAP_ZOOM: 8,
-        RISK_LEVELS: { "CRÍTICO": { color: "#ef4444" }, "ALTO": { color: "#f97316" }, "MODERADO": { color: "#facc15" }, "BAJO": { color: "#22c55e" }, "DATOS INSUFICENTES": { color: "#9ca3af" } },
-        CONTEXT_LAYERS: [
-            { name: 'Áreas Protegidas', file: 'layers/Areas_Protegidas_Poligono.geojson', style: { color: "#16a34a", weight: 2, opacity: 0.8, fillOpacity: 0.15 } },
-            { name: 'Cuarteles de Bomberos', file: 'layers/Cuartel_Bomberos_Punto.geojson' },
-            { name: 'Comunidades Indígenas', file: 'layers/Comunidades_Indigenas_CBA.geojson' }
-        ]
+      GEOJSON_URL: 'riesgo_hexagonos.geojson',
+      MAP_CENTER: [-32.0, -64.0],
+      MAP_ZOOM: 8,
+      RISK_LEVELS: {
+        "CRÍTICO": { color: "#ef4444" },
+        "ALTO": { color: "#f97316" },
+        "MODERADO": { color: "#facc15" },
+        "BAJO": { color: "#22c55e" },
+        "DATOS INSUFICENTES": { color: "#9ca3af" }
+      },
+      CONTEXT_LAYERS: [
+        { name: 'Áreas Protegidas', file: 'layers/Areas_Protegidas_Poligono.geojson', style: { color: "#16a34a", weight: 2, opacity: 0.8, fillOpacity: 0.15 } },
+        { name: 'Cuarteles de Bomberos', file: 'layers/Cuartel_Bomberos_Punto.geojson' },
+        { name: 'Comunidades Indígenas', file: 'layers/Comunidades_Indigenas_CBA.geojson' },
+
+        // NUEVA CAPA: Curvas de Nivel (color por altitud)
+        {
+          name: 'Curvas de Nivel',
+          file: 'layers/Curvas_Nivel_CBA.geojson',
+          style: (feature) => {
+            const z = feature?.properties?.ELEV ?? feature?.properties?.elev ?? feature?.properties?.contour ?? 0;
+            let color = '#d1d5db';
+            if (z > 2000) color = '#1f2937';
+            else if (z > 1500) color = '#4b5563';
+            else if (z > 1000) color = '#6b7280';
+            else if (z > 500) color = '#9ca3af';
+            return { color, weight: 1, opacity: 0.7 };
+          }
+        }
+      ]
     };
+
+    // ---------------- MAPA & CAPAS ----------------
     const mapLayers = { context: {}, pins: L.layerGroup() };
     let hexLayer, highlightedFeature;
 
     const map = L.map('map').setView(CONFIG.MAP_CENTER, CONFIG.MAP_ZOOM);
+
+    // Basemaps
     L.control.layers({
-        "ESRI Satélite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri' }).addTo(map),
-        "NASA Satélite": L.tileLayer('https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg', { attribution: '© NASA GIBS', maxZoom: 9 }),
-        "Mapa Oscuro": L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© CartoDB' }),
-        "Calles": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' })
+      "ESRI Satélite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri' }).addTo(map),
+      "NASA Satélite": L.tileLayer('https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg', { attribution: '© NASA GIBS', maxZoom: 9 }),
+      "Mapa Oscuro": L.tileLayer('https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© CartoDB' }),
+      "Calles": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' })
     }).addTo(map);
 
     document.addEventListener('DOMContentLoaded', async () => {
-        await loadHexData();
-        await loadContextLayers();
-        buildLayerControls();
+      await loadHexData();
+      await loadContextLayers();
+      buildLayerControls();
     });
 
+    // ---------------- HEXÁGONOS DE RIESGO ----------------
     async function loadHexData() {
-        try {
-            const response = await fetch(CONFIG.GEOJSON_URL);
-            const geojsonData = await response.json();
-            hexLayer = L.geoJSON(geojsonData, {
-                style: feature => ({
-                    fillColor: CONFIG.RISK_LEVELS[feature.properties.nivel]?.color || '#333',
-                    weight: 1, opacity: 0.5, color: 'white', fillOpacity: 0.7
-                }),
-                onEachFeature: (feature, layer) => {
-                    if (feature.geometry.type === 'Polygon') {
-                        const center = layer.getBounds().getCenter();
-                        L.circleMarker(center, { radius: 2.5, fillColor: "white", fillOpacity: 0.8, color: "black", weight: 1, interactive: false }).addTo(mapLayers.pins);
-                    }
-                    layer.on({
-                        mouseover: e => e.target.setStyle({ weight: 2.5, opacity: 1 }),
-                        mouseout: () => { if (layer !== highlightedFeature) hexLayer.resetStyle(layer); },
-                        click: e => {
-                            if (highlightedFeature) hexLayer.resetStyle(highlightedFeature);
-                            highlightedFeature = layer;
-                            layer.setStyle({ className: 'highlighted-feature' }).bringToFront();
-                            showReportModal(feature.properties);
-                        }
-                    });
-                }
-            }).addTo(map);
-            mapLayers.pins.addTo(map);
-            buildRiskFilters();
-        } catch (error) { alert("No se pudieron cargar los datos de la grilla de riesgo."); }
+      try {
+        const response = await fetch(CONFIG.GEOJSON_URL);
+        const geojsonData = await response.json();
+
+        hexLayer = L.geoJSON(geojsonData, {
+          style: feature => ({
+            fillColor: CONFIG.RISK_LEVELS[feature.properties.nivel]?.color || '#333',
+            weight: 1, opacity: 0.5, color: 'white', fillOpacity: 0.7
+          }),
+          onEachFeature: (feature, layer) => {
+            if (feature.geometry.type === 'Polygon') {
+              const center = layer.getBounds().getCenter();
+              L.circleMarker(center, { radius: 2.5, fillColor: "white", fillOpacity: 0.8, color: "black", weight: 1, interactive: false }).addTo(mapLayers.pins);
+            }
+            layer.on({
+              mouseover: e => e.target.setStyle({ weight: 2.5, opacity: 1 }),
+              mouseout: () => { if (layer !== highlightedFeature) hexLayer.resetStyle(layer); },
+              click: e => {
+                if (highlightedFeature) hexLayer.resetStyle(highlightedFeature);
+                highlightedFeature = layer;
+                layer.setStyle({ className: 'highlighted-feature' }).bringToFront();
+                showReportModal(feature.properties);
+              }
+            });
+          }
+        }).addTo(map);
+
+        mapLayers.pins.addTo(map);
+        buildRiskFilters();
+      } catch (error) {
+        alert("No se pudieron cargar los datos de la grilla de riesgo.");
+      }
     }
 
     function buildRiskFilters() {
-        const container = document.getElementById('risk-filters');
-        container.innerHTML = Object.keys(CONFIG.RISK_LEVELS).map(level => `<label class="flex items-center space-x-2 cursor-pointer"><input type="checkbox" checked class="risk-toggle h-4 w-4 rounded" data-level="${level}" style="accent-color: ${CONFIG.RISK_LEVELS[level].color};"><span>${level}</span></label>`).join('');
-        container.addEventListener('change', () => {
-            const active = Array.from(document.querySelectorAll('.risk-toggle:checked')).map(cb => cb.dataset.level);
-            let pinsVisible = false;
-            hexLayer.eachLayer(layer => {
-                const isVisible = active.includes(layer.feature.properties.nivel);
-                layer.setStyle({ fillOpacity: isVisible ? 0.7 : 0, opacity: isVisible ? 0.5 : 0, interactive: isVisible });
-                if (isVisible) pinsVisible = true;
-            });
-            pinsVisible ? map.addLayer(mapLayers.pins) : map.removeLayer(mapLayers.pins);
+      const container = document.getElementById('risk-filters');
+      container.innerHTML = Object.keys(CONFIG.RISK_LEVELS)
+        .map(level => `<label class="flex items-center space-x-2 cursor-pointer">
+            <input type="checkbox" checked class="risk-toggle h-4 w-4 rounded" data-level="${level}" style="accent-color: ${CONFIG.RISK_LEVELS[level].color};">
+            <span>${level}</span>
+          </label>`).join('');
+
+      container.addEventListener('change', () => {
+        const active = Array.from(document.querySelectorAll('.risk-toggle:checked')).map(cb => cb.dataset.level);
+        let pinsVisible = false;
+        hexLayer.eachLayer(layer => {
+          const isVisible = active.includes(layer.feature.properties.nivel);
+          layer.setStyle({ fillOpacity: isVisible ? 0.7 : 0, opacity: isVisible ? 0.5 : 0, interactive: isVisible });
+          if (isVisible) pinsVisible = true;
         });
+        pinsVisible ? map.addLayer(mapLayers.pins) : map.removeLayer(mapLayers.pins);
+      });
     }
 
+    // ---------------- CAPAS DE CONTEXTO ----------------
     async function loadContextLayers() {
-        for (const layerInfo of CONFIG.CONTEXT_LAYERS) {
-            try {
-                const response = await fetch(layerInfo.file);
-                const geojsonData = await response.json();
-                mapLayers.context[layerInfo.name] = L.geoJSON(geojsonData, {
-                    style: layerInfo.style,
-                    pointToLayer: (feature, latlng) => {
-                        const iconHtml = layerInfo.name === 'Comunidades Indígenas' ? '🌿' : '🚒';
-                        const tooltipText = feature.properties.nombre || feature.properties.comunidad_ || feature.properties.nam || 'Punto de interés';
-                        return L.marker(latlng, { icon: L.divIcon({ html: iconHtml, className: 'text-2xl', iconSize: [24,24] }) }).bindTooltip(tooltipText);
-                    }
-                });
-            } catch (error) { mapLayers.context[layerInfo.name] = null; }
+      for (const layerInfo of CONFIG.CONTEXT_LAYERS) {
+        try {
+          const response = await fetch(layerInfo.file);
+          const geojsonData = await response.json();
+
+          // etiqueta genérica
+          const pickLabel = (props) =>
+            props?.nombre ?? props?.comunidad_ ?? props?.nam ??
+            props?.ELEV ?? props?.elev ?? props?.contour ?? 'Elemento';
+
+          mapLayers.context[layerInfo.name] = L.geoJSON(geojsonData, {
+            style: layerInfo.style, // acepta objeto o función
+            pointToLayer: (feature, latlng) => {
+              const iconHtml = layerInfo.name === 'Comunidades Indígenas' ? '🌿'
+                               : layerInfo.name.includes('Bomberos') ? '🚒'
+                               : '📍';
+              return L.marker(latlng, {
+                icon: L.divIcon({ html: iconHtml, className: 'text-2xl', iconSize: [24,24] })
+              }).bindTooltip(pickLabel(feature.properties));
+            },
+            onEachFeature: (feature, layer) => {
+              // tooltips para líneas/polígonos también
+              layer.bindTooltip(pickLabel(feature.properties));
+            }
+          });
+        } catch (error) {
+          mapLayers.context[layerInfo.name] = null;
         }
+      }
     }
 
     function buildLayerControls() {
-        const container = document.getElementById('layer-controls');
-        container.innerHTML = CONFIG.CONTEXT_LAYERS.map(l => `<label class="flex items-center space-x-2 ${mapLayers.context[l.name] ? 'cursor-pointer' : 'text-gray-400'}"><input type="checkbox" class="context-toggle h-4 w-4 rounded" data-name="${l.name}" ${!mapLayers.context[l.name] ? 'disabled' : ''}><span>${l.name}</span></label>`).join('');
-        container.addEventListener('change', e => {
-            if (e.target.classList.contains('context-toggle')) {
-                const layer = mapLayers.context[e.target.dataset.name];
-                if (layer) e.target.checked ? map.addLayer(layer) : map.removeLayer(layer);
-            }
-        });
+      const container = document.getElementById('layer-controls');
+      container.innerHTML = CONFIG.CONTEXT_LAYERS.map(l => `
+        <label class="flex items-center space-x-2 ${mapLayers.context[l.name] ? 'cursor-pointer' : 'text-gray-400'}">
+          <input type="checkbox" class="context-toggle h-4 w-4 rounded" data-name="${l.name}" ${!mapLayers.context[l.name] ? 'disabled' : ''}>
+          <span>${l.name}</span>
+        </label>`).join('');
+
+      container.addEventListener('change', e => {
+        if (!e.target.classList.contains('context-toggle')) return;
+        const layerName = e.target.dataset.name;
+        const layer = mapLayers.context[layerName];
+        if (!layer) return;
+
+        // Si es Curvas de Nivel, respetar el umbral de zoom
+        if (layerName === 'Curvas de Nivel') {
+          const show = map.getZoom() >= 10;
+          if (e.target.checked && show) { map.addLayer(layer); }
+          else { map.removeLayer(layer); }
+        } else {
+          e.target.checked ? map.addLayer(layer) : map.removeLayer(layer);
+        }
+      });
     }
-    
+
+    // Mostrar/ocultar Curvas de Nivel según zoom (solo si el checkbox está encendido)
+    map.on('zoomend', () => {
+      const curvas = mapLayers.context['Curvas de Nivel'];
+      const cb = document.querySelector('.context-toggle[data-name="Curvas de Nivel"]');
+      if (!curvas || !cb) return;
+      const show = map.getZoom() >= 10;
+      if (show && cb.checked && !map.hasLayer(curvas)) map.addLayer(curvas);
+      if (!show && map.hasLayer(curvas)) map.removeLayer(curvas);
+    });
+
+    // ---------------- MODAL ----------------
     const modalBg = document.getElementById('modal-bg');
     const openModal = () => modalBg.classList.remove('hidden', 'opacity-0');
     const closeModal = () => {
-        modalBg.classList.add('opacity-0');
-        if (highlightedFeature) { hexLayer.resetStyle(highlightedFeature); highlightedFeature = null; }
-        setTimeout(() => modalBg.classList.add('hidden'), 300);
+      modalBg.classList.add('opacity-0');
+      if (highlightedFeature) { hexLayer.resetStyle(highlightedFeature); highlightedFeature = null; }
+      setTimeout(() => modalBg.classList.add('hidden'), 300);
     };
+    window.closeModal = closeModal;
+
+    function showAboutModal() {
+      document.getElementById('modal-content').innerHTML = `
+        <div class="p-6 space-y-3">
+          <div class="flex justify-between items-start">
+            <h2 class="text-xl font-bold">Sobre GeoAlertAR</h2>
+            <button onclick="closeModal()" class="text-3xl">&times;</button>
+          </div>
+          <p>Demo de riesgo de incendios para Córdoba, AR (MODIS + CHIRPS + Open-Meteo + SAOCOM opcional).</p>
+          <p>Capas de contexto: Áreas Protegidas, Cuarteles de Bomberos, Comunidades Indígenas y Curvas de Nivel.</p>
+        </div>`;
+      openModal();
+    }
+    window.showAboutModal = showAboutModal;
 
     function showReportModal(props) {
-        if (props.nivel === 'DATOS INSUFICENTES') return;
-        const saocom = props.humedad_saocom_pct != null ? `${props.humedad_saocom_pct.toFixed(1)}%` : 'No disponible';
-        
-        // --- SECCIÓN CORREGIDA PARA MOSTRAR NDVI Y NBR ---
-        document.getElementById('modal-content').innerHTML = `
-            <div class="p-6">
-                <div class="flex justify-between items-start"><h2 class="text-2xl font-bold">Reporte: ${props.nombre || `Zona #${props.id}`}</h2><button onclick="closeModal()" class="text-3xl">&times;</button></div>
-                <div class="bg-gray-50 p-4 rounded-lg my-4"><h3 class="text-sm uppercase">Riesgo General</h3><p class="text-3xl font-bold" style="color:${CONFIG.RISK_LEVELS[props.nivel].color};">${props.nivel} (${props.riesgo_final}%)</p></div>
-                <div class="grid md:grid-cols-2 gap-4 text-sm">
-                    <div class="md:col-span-2 bg-blue-50 p-3 rounded-lg"><h4 class="font-bold text-blue-800">🌡️ Pronóstico del Día</h4><div class="grid grid-cols-2 gap-4 mt-1">
-                        <div><p><strong>Viento Máx:</strong> ${props.viento_max_kmh?.toFixed(1) || 'N/A'} km/h</p><p class="text-xs mt-1">Acelera la propagación.</p></div>
-                        <div><p><strong>Humedad Mín:</strong> ${props.humedad_min?.toFixed(0) || 'N/A'}%</p><p class="text-xs mt-1">Deshidrata el combustible.</p></div>
-                    </div></div>
-                    <div class="bg-red-50 p-3 rounded-lg"><h4 class="font-bold text-red-800">💧 Humedad de Suelo (SAOCOM)</h4><p><strong>Humedad:</strong> ${saocom}</p><p class="text-xs mt-1">Ventaja competitiva de CONAE.</p></div>
-                    <div class="bg-yellow-50 p-3 rounded-lg"><h4 class="font-bold text-yellow-800">🌱 Estado del Combustible (Terra/MODIS)</h4>
-                        <div class="grid grid-cols-2 gap-2">
-                           <div><p><strong>NDVI:</strong> ${props.ndvi.toFixed(3)}</p><p class="text-xs mt-1">Verdor</p></div>
-                           <div><p><strong>NBR:</strong> ${props.nbr.toFixed(3)}</p><p class="text-xs mt-1">Estrés Hídrico</p></div>
-                        </div>
-                    </div>
-                </div>
-            </div>`;
-        openModal();
+      if (props.nivel === 'DATOS INSUFICENTES') return;
+      const saocom = props.humedad_saocom_pct != null ? `${props.humedad_saocom_pct.toFixed(1)}%` : 'No disponible';
+
+      document.getElementById('modal-content').innerHTML = `
+        <div class="p-6">
+          <div class="flex justify-between items-start">
+            <h2 class="text-2xl font-bold">Reporte: ${props.nombre || `Zona #${props.id}`}</h2>
+            <button onclick="closeModal()" class="text-3xl">&times;</button>
+          </div>
+
+          <div class="bg-gray-50 p-4 rounded-lg my-4">
+            <h3 class="text-sm uppercase">Riesgo General</h3>
+            <p class="text-3xl font-bold" style="color:${CONFIG.RISK_LEVELS[props.nivel].color};">
+              ${props.nivel} (${props.riesgo_final?.toFixed?.(1) ?? props.riesgo_final}%)
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 text-sm">
+            <div class="p-3 border rounded-lg">
+              <div class="font-semibold">Vegetación</div>
+              <div>NDVI: ${props.ndvi?.toFixed?.(3) ?? '—'}</div>
+              <div>NBR: ${props.nbr?.toFixed?.(3) ?? '—'}</div>
+            </div>
+            <div class="p-3 border rounded-lg">
+              <div class="font-semibold">Clima</div>
+              <div>Temp. (LST): ${props.lst_celsius?.toFixed?.(1) ?? '—'} °C</div>
+              <div>Humedad mínima: ${props.humedad_min ?? '—'} %</div>
+              <div>Viento máx.: ${props.viento_max_kmh ?? '—'} km/h</div>
+              <div>Prec. 60d: ${props.precip_60d_mm ?? '—'} mm</div>
+            </div>
+            <div class="p-3 border rounded-lg col-span-2">
+              <div class="font-semibold">SAOCOM (opcional)</div>
+              <div>Humedad de suelo: ${saocom}</div>
+            </div>
+          </div>
+        </div>`;
+      openModal();
     }
-    
-    function showAboutModal() {
-        document.getElementById('modal-content').innerHTML = `
-            <div class="p-6"><div class="flex justify-between items-start"><h2 class="text-2xl font-bold">📖 Sobre GeoAlertAR Demo</h2><button onclick="closeModal()" class="text-3xl">&times;</button></div>
-            <div class="space-y-4 text-sm mt-4">
-                <p>Prototipo para el <strong>NASA Space Apps Challenge</strong>.</p>
-                <div><h3 class="font-bold">🛰️ Fuentes de Datos</h3><ul class="list-disc list-inside mt-1">
-                    <li><strong>Terra/MODIS (NASA):</strong> Para NDVI, NBR y Temperatura.</li>
-                    <li><strong>CHIRPS (USGS/NASA):</strong> Para precipitación.</li>
-                    <li><strong>Open-Meteo API:</strong> Para Viento y Humedad.</li>
-                    <li><strong>SAOCOM (CONAE):</strong> Capacidad de integrar datos de humedad de suelo.</li>
-                </ul></div>
-                <div><h3 class="font-bold"> Lógica Avanzada</h3><p>El riesgo se calcula con un modelo de funciones continuas que pondera factores críticos como el viento y la humedad.</p></div>
-            </div></div>`;
-        openModal();
-    }
-</script>
+    window.showReportModal = showReportModal;
+  </script>
 </body>
 </html>
-
