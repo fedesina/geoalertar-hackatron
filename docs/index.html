@@ -95,25 +95,35 @@
       // Capas CSV opcionales
       CSV_LAYERS: [
         { name: 'Cobertura de Suelo (CSV)', file: 'layers/sd_cobertura_suelo.csv' }
-      ]
+      ],
+      // NUEVO: CSV de humedad por hexágono (campo: Humedad_mean)
+      HUMEDAD_HEX_CSV: 'layers/Humedad_por_hexagono.csv'
     };
 
     // ---------------- MAPA & CAPAS ----------------
     const mapLayers = { context: {}, csv: {}, pins: L.layerGroup() };
     let hexLayer, highlightedFeature;
 
+    // NUEVO: cache y referencias para la humedad por hex
+    let hexGeoData = null;   // GeoJSON de hex cargado
+    let humedadLayer = null; // capa choropleth
+    let humedadLegend = null;// leyenda
+
     const map = L.map('map').setView(CONFIG.MAP_CENTER, CONFIG.MAP_ZOOM);
 
+    // Bases: sin NASA, con "ESRI Híbrido"
     L.control.layers({
-  "ESRI Satélite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri, Maxar, Earthstar Geographics' }).addTo(map),
-  "ESRI Híbrido": L.layerGroup([
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri, Maxar, Earthstar Geographics' }),
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri', opacity: 0.9 })
-  ]),
-  "Mapa Oscuro": L.tileLayer('https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© CartoDB' }),
-  "Calles": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' })
-}).addTo(map);
-
+      "ESRI Satélite": L.tileLayer(
+        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        { attribution: '© Esri, Maxar, Earthstar Geographics' }
+      ).addTo(map),
+      "ESRI Híbrido": L.layerGroup([
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri, Maxar, Earthstar Geographics' }),
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri', opacity: 0.9 })
+      ]),
+      "Mapa Oscuro": L.tileLayer('https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© CartoDB' }),
+      "Calles": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' })
+    }).addTo(map);
 
     // Escala gráfica
     L.control.scale({ metric: true, imperial: false }).addTo(map);
@@ -128,6 +138,7 @@
       await loadHexData();
       await loadContextLayers();
       await loadCsvLayers();
+      await loadHumedadHex();    // <-- NUEVO: arma la capa coropleta desde el CSV
       buildLayerControls();
     });
 
@@ -135,6 +146,9 @@
     async function loadHexData() {
       const response = await fetch(CONFIG.GEOJSON_URL);
       const data = await response.json();
+
+      hexGeoData = data; // <-- cache para unir con CSV de humedad
+
       hexLayer = L.geoJSON(data, {
         style: f => ({
           fillColor: CONFIG.RISK_LEVELS[f.properties.nivel]?.color || '#333',
@@ -198,7 +212,7 @@
       }
     }
 
-    // ---------------- CAPAS CSV ----------------
+    // ---------------- CAPAS CSV (puntos) ----------------
     function detectLatLon(headers) {
       const latCandidates = ['lat','latitude','LAT','Lat','y','Y','latitud','Latitud'];
       const lonCandidates = ['lon','lng','long','LONGITUDE','Lon','x','X','longitud','Longitud'];
@@ -247,13 +261,128 @@
       }
     }
 
+    // ---------------- HUMEDAD POR HEX (choropleth desde CSV) ----------------
+    async function loadHumedadHex() {
+      try {
+        const res = await fetch(CONFIG.HUMEDAD_HEX_CSV);
+        const text = await res.text();
+        const parsed = Papa.parse(text, { header: true, dynamicTyping: true, skipEmptyLines: true });
+        const rows = parsed.data;
+
+        // columnas: id, Humedad_mean (según tu CSV)
+        const idCol = 'id';
+        const valCol = 'Humedad_mean';
+
+        const mapIdToValue = new Map();
+        const values = [];
+        for (const r of rows) {
+          const id = String(r[idCol]).trim();
+          const val = Number(r[valCol]);
+          if (id && Number.isFinite(val)) {
+            mapIdToValue.set(id, val);
+            values.push(val);
+          }
+        }
+        if (!values.length || !hexGeoData) {
+          console.warn('[HumedadHex] No hay valores o no se cargó el GeoJSON.');
+          return;
+        }
+
+        const min = Math.min(...values);
+        const max = Math.max(...values);
+
+        const colorFor = (v) => {
+          const t = Math.max(0, Math.min(1, (v - min) / (max - min)));
+          const stops = ['#2563eb', '#22c55e', '#facc15', '#f97316', '#7c3e0a']; // azul->verde->amarillo->naranja->marrón
+          const idx = Math.min(stops.length - 2, Math.floor(t * (stops.length - 1)));
+          const lerp = (a,b,p)=>Math.round(a + (b-a)*p);
+          const hex2rgb = h => h.match(/[0-9a-f]{2}/gi).map(x=>parseInt(x,16));
+          const [r1,g1,b1] = hex2rgb(stops[idx].replace('#',''));
+          const [r2,g2,b2] = hex2rgb(stops[idx+1].replace('#',''));
+          const p = (t * (stops.length - 1)) - idx;
+          return `rgb(${lerp(r1,r2,p)},${lerp(g1,g2,p)},${lerp(b1,b2,p)})`;
+        };
+
+        const feats = [];
+        for (const f of hexGeoData.features) {
+          const pid = String(f.properties.id ?? f.properties.ID ?? f.properties.hex_id ?? '').trim();
+          if (!pid) continue;
+          const val = mapIdToValue.get(pid);
+          if (val == null) continue;
+          feats.push({
+            type: 'Feature',
+            geometry: f.geometry,
+            properties: { ...f.properties, humedad_mean: val }
+          });
+        }
+
+        const gj = { type: 'FeatureCollection', features: feats };
+        humedadLayer = L.geoJSON(gj, {
+          style: ft => ({
+            fillColor: colorFor(ft.properties.humedad_mean),
+            color: '#ffffff',
+            weight: 0.5,
+            opacity: 0.8,
+            fillOpacity: 0.6
+          }),
+          onEachFeature: (ft, layer) => {
+            const v = ft.properties.humedad_mean;
+            layer.bindTooltip(`Humedad media: ${v.toFixed(1)}`);
+          }
+        });
+
+        // Leyenda
+        if (humedadLegend) { try { humedadLegend.remove(); } catch {} humedadLegend = null; }
+        humedadLegend = L.control({ position: 'bottomright' });
+        humedadLegend.onAdd = () => {
+          const div = L.DomUtil.create('div', 'humedad-legend');
+          div.style.background = 'rgba(255,255,255,0.9)';
+          div.style.padding = '8px 10px';
+          div.style.borderRadius = '8px';
+          div.style.boxShadow = '0 1px 6px rgba(0,0,0,.15)';
+          div.style.fontSize = '12px';
+          const samples = 60;
+          const stops = Array.from({length: samples}, (_,i) => {
+            const v = min + (i/(samples-1))*(max-min);
+            return colorFor(v);
+          });
+          const gradient = `linear-gradient(to right, ${stops.join(',')})`;
+          div.innerHTML = `
+            <div style="font-weight:600;margin-bottom:6px;">Humedad de Suelo (media)</div>
+            <div style="width:220px;height:12px;border-radius:6px;background:${gradient};border:1px solid #e5e7eb;"></div>
+            <div style="display:flex;justify-content:space-between;margin-top:4px;">
+              <span>${min.toFixed(1)}</span><span>${max.toFixed(1)}</span>
+            </div>`;
+          return div;
+        };
+
+        // Registrar para que aparezca como "contexto" (toggle)
+        mapLayers.context['Humedad de Suelo (hex)'] = humedadLayer;
+      } catch (err) {
+        console.error('[HumedadHex] Error:', err);
+        humedadLayer = null;
+      }
+    }
+
     // ---------------- CONTROLES ----------------
     function buildLayerControls() {
       const c = document.getElementById('layer-controls');
-      const ctxHtml = CONFIG.CONTEXT_LAYERS.map(l =>
-        `<label class="flex items-center space-x-2 ${mapLayers.context[l.name]?'cursor-pointer':'text-gray-400'}">
-          <input type="checkbox" class="context-toggle h-4 w-4 rounded" data-name="${l.name}" ${!mapLayers.context[l.name]?'disabled':''}>
-          <span>${l.name}</span>
+
+      const ctxHtml = Object.keys(CONFIG.CONTEXT_LAYERS.reduce((acc, l) => (acc[l.name]=true, acc), {})).map(name => {
+        const layerObj = CONFIG.CONTEXT_LAYERS.find(x => x.name === name);
+        const isReady = !!mapLayers.context[name];
+        return `<label class="flex items-center space-x-2 ${isReady?'cursor-pointer':'text-gray-400'}">
+          <input type="checkbox" class="context-toggle h-4 w-4 rounded" data-name="${name}" ${!isReady?'disabled':''}>
+          <span>${name}</span>
+        </label>`;
+      }).join('');
+
+      // incluir también la humedad si está disponible
+      const extraContext = Object.keys(mapLayers.context).filter(n => !CONFIG.CONTEXT_LAYERS.find(x => x.name === n));
+      const extraHtml = extraContext.map(name =>
+        `<label class="flex items-center space-x-2 ${mapLayers.context[name]?'cursor-pointer':'text-gray-400'}">
+          <input type="checkbox" class="context-toggle h-4 w-4 rounded" data-name="${name}" ${!mapLayers.context[name]?'disabled':''}>
+          <span>${name}</span>
         </label>`).join('');
 
       const csvHtml = (CONFIG.CSV_LAYERS||[]).map(l =>
@@ -262,19 +391,32 @@
           <span>${l.name}</span>
         </label>`).join('');
 
-      c.innerHTML = ctxHtml + (csvHtml ? `<div class="mt-2 border-t pt-2">${csvHtml}</div>` : '');
+      c.innerHTML = ctxHtml + extraHtml + (csvHtml ? `<div class="mt-2 border-t pt-2">${csvHtml}</div>` : '');
 
       c.addEventListener('change', e => {
         const el = e.target;
+
+        // Contexto (GeoJSON + humedad hex)
         if (el.classList.contains('context-toggle')) {
           const name = el.dataset.name, layer = mapLayers.context[name];
           if (!layer) return;
+
           if (name === 'Curvas de Nivel') {
             const show = map.getZoom() >= 10;
             if (el.checked && show) map.addLayer(layer);
             else map.removeLayer(layer);
-          } else el.checked ? map.addLayer(layer) : map.removeLayer(layer);
+          } else {
+            el.checked ? map.addLayer(layer) : map.removeLayer(layer);
+          }
+
+          // leyenda de humedad
+          if (name === 'Humedad de Suelo (hex)') {
+            if (el.checked && humedadLegend) humedadLegend.addTo(map);
+            else if (humedadLegend) humedadLegend.remove();
+          }
         }
+
+        // CSV puntos
         if (el.classList.contains('csv-toggle')) {
           const name = el.dataset.name, layer = mapLayers.csv[name];
           if (!layer) return;
