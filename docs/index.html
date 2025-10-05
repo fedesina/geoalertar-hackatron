@@ -10,7 +10,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- Papa Parse (por si usás CSV) -->
+  <!-- Papa Parse para CSV -->
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 
   <style>
@@ -22,8 +22,6 @@
     .kpi { border: 1px solid #e5e7eb; border-radius: 10px; padding: 10px; }
     .kpi .label { color: #6b7280; font-size: 12px; }
     .kpi .value { font-weight: 700; font-size: 18px; }
-    .divider { height: 1px; background: #e5e7eb; }
-    .badge { padding: 2px 8px; border-radius: 999px; font-weight: 600; font-size: 12px; }
     .table { width:100%; border-collapse: collapse; }
     .table th { text-align:left; font-size:12px; color:#6b7280; font-weight:600; padding:6px 8px; }
     .table td { font-size:14px; padding:6px 8px; border-top:1px solid #f1f5f9; }
@@ -94,11 +92,9 @@
           }
         }
       ],
+      // Capas CSV opcionales
       CSV_LAYERS: [
-        {
-          name: 'Cobertura de Suelo (CSV)',
-          file: 'layers/sd_cobertura_suelo.csv'
-        }
+        { name: 'Cobertura de Suelo (CSV)', file: 'layers/sd_cobertura_suelo.csv' }
       ]
     };
 
@@ -109,11 +105,15 @@
     const map = L.map('map').setView(CONFIG.MAP_CENTER, CONFIG.MAP_ZOOM);
 
     L.control.layers({
-      "ESRI Satélite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri' }).addTo(map),
-      "NASA Satélite": L.tileLayer('https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg', { attribution: '© NASA GIBS', maxZoom: 9 }),
-      "Mapa Oscuro": L.tileLayer('https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© CartoDB' }),
-      "Calles": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' })
-    }).addTo(map);
+  "ESRI Satélite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri, Maxar, Earthstar Geographics' }).addTo(map),
+  "ESRI Híbrido": L.layerGroup([
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri, Maxar, Earthstar Geographics' }),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { attribution: '© Esri', opacity: 0.9 })
+  ]),
+  "Mapa Oscuro": L.tileLayer('https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '© CartoDB' }),
+  "Calles": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' })
+}).addTo(map);
+
 
     // Escala gráfica
     L.control.scale({ metric: true, imperial: false }).addTo(map);
@@ -131,7 +131,7 @@
       buildLayerControls();
     });
 
-    // ---------------- HEXÁGONOS ----------------
+    // ---------------- HEXÁGONOS (riesgo) ----------------
     async function loadHexData() {
       const response = await fetch(CONFIG.GEOJSON_URL);
       const data = await response.json();
@@ -146,7 +146,7 @@
             L.circleMarker(c, { radius: 2, fillColor: "white", fillOpacity: 0.8, color: "black", weight: 1, interactive: false }).addTo(mapLayers.pins);
           }
           layer.on({
-            click: e => {
+            click: () => {
               if (highlightedFeature) hexLayer.resetStyle(highlightedFeature);
               highlightedFeature = layer;
               layer.setStyle({ className: 'highlighted-feature' }).bringToFront();
@@ -166,6 +166,16 @@
           <input type="checkbox" checked class="risk-toggle h-4 w-4 rounded" data-level="${l}" style="accent-color:${CONFIG.RISK_LEVELS[l].color};">
           <span>${l}</span>
         </label>`).join('');
+      c.addEventListener('change', () => {
+        const active = Array.from(document.querySelectorAll('.risk-toggle:checked')).map(cb => cb.dataset.level);
+        let pinsVisible = false;
+        hexLayer.eachLayer(layer => {
+          const isVisible = active.includes(layer.feature.properties.nivel);
+          layer.setStyle({ fillOpacity: isVisible ? 0.7 : 0, opacity: isVisible ? 0.5 : 0, interactive: isVisible });
+          if (isVisible) pinsVisible = true;
+        });
+        pinsVisible ? map.addLayer(mapLayers.pins) : map.removeLayer(mapLayers.pins);
+      });
     }
 
     // ---------------- CAPAS CONTEXTO (GeoJSON) ----------------
@@ -273,6 +283,7 @@
       });
     }
 
+    // Mostrar/ocultar Curvas según zoom
     map.on('zoomend', () => {
       const curvas = mapLayers.context['Curvas de Nivel'];
       const cb = document.querySelector('.context-toggle[data-name="Curvas de Nivel"]');
@@ -282,15 +293,13 @@
       if (!show && map.hasLayer(curvas)) map.removeLayer(curvas);
     });
 
-    // ---------------- MODAL ----------------
+    // ---------------- MODAL: REPORTE ----------------
     const modalBg=document.getElementById('modal-bg');
     const openModal=()=>modalBg.classList.remove('hidden','opacity-0');
     const closeModal=()=>{modalBg.classList.add('opacity-0');setTimeout(()=>modalBg.classList.add('hidden'),300);};
     window.closeModal=closeModal;
 
-    function copyToClipboard(text) {
-      navigator.clipboard?.writeText(text);
-    }
+    function copyToClipboard(text) { navigator.clipboard?.writeText(text); }
 
     function showReportModal(p, centerLatLng) {
       if (p.nivel==='DATOS INSUFICENTES') return;
@@ -315,25 +324,16 @@
 
           <div class="rounded-lg p-4 text-white" style="background:${riskColor}dd;">
             <div class="flex items-center justify-between">
-              <div class="text-xl font-semibold">RIESGO GENERAL <span class="badge bg-white/30 ml-2">${p.nivel}</span></div>
+              <div class="text-xl font-semibold">RIESGO GENERAL <span class="ml-2 px-2 py-0.5 rounded-full bg-white/30 text-white font-semibold text-xs">${p.nivel}</span></div>
               <div class="text-3xl font-extrabold">${(p.riesgo_final?.toFixed?.(1) ?? 0)}%</div>
             </div>
             <p class="text-sm mt-1">${resumen}</p>
           </div>
 
           <div class="grid md:grid-cols-3 gap-3">
-            <div class="kpi">
-              <div class="label">NDVI</div>
-              <div class="value">${p.ndvi?.toFixed?.(3) ?? '—'}</div>
-            </div>
-            <div class="kpi">
-              <div class="label">NBR</div>
-              <div class="value">${p.nbr?.toFixed?.(3) ?? '—'}</div>
-            </div>
-            <div class="kpi">
-              <div class="label">Temp. (LST)</div>
-              <div class="value">${p.lst_celsius?.toFixed?.(1) ?? '—'} °C</div>
-            </div>
+            <div class="kpi"><div class="label">NDVI</div><div class="value">${p.ndvi?.toFixed?.(3) ?? '—'}</div></div>
+            <div class="kpi"><div class="label">NBR</div><div class="value">${p.nbr?.toFixed?.(3) ?? '—'}</div></div>
+            <div class="kpi"><div class="label">Temp. (LST)</div><div class="value">${p.lst_celsius?.toFixed?.(1) ?? '—'} °C</div></div>
           </div>
 
           <div class="grid md:grid-cols-2 gap-4">
@@ -360,26 +360,99 @@
           <div class="border rounded-lg p-3">
             <div class="font-semibold mb-2">🧪 Metodología (resumen)</div>
             <p class="text-sm text-gray-700">
-              Índice compuesto (0–100) integrado por vegetación (NDVI/NBR, MODIS), temperatura superficial (LST, MODIS), precipitación acumulada (CHIRPS),
-              viento y humedad relativa (Open-Meteo) y humedad de suelo (SAOCOM, opcional). Clasificación: Bajo–Moderado–Alto–Crítico.
+              Índice continuo <b>0–100</b> mediante combinación ponderada de variables biofísicas y meteorológicas,
+              inspirado en buenas prácticas (p. ej., FWI) y adaptado a condiciones regionales.
+              Validado contra <b>registros históricos</b> del SNMF y reportes de incendios en Córdoba.
             </p>
           </div>
-        </div>
-      `;
+        </div>`;
       openModal();
     }
     window.showReportModal = showReportModal;
 
+    // ---------------- MODAL: SOBRE EL PROYECTO ----------------
     function showAboutModal() {
-      document.getElementById('modal-content').innerHTML = `
-        <div class="p-6 space-y-3">
+      const html = `
+        <div class="p-6 space-y-5">
           <div class="flex justify-between items-start">
-            <h2 class="text-xl font-bold">Sobre GeoAlertAR</h2>
-            <button onclick="closeModal()" class="text-3xl">&times;</button>
+            <div>
+              <h2 class="text-2xl font-extrabold tracking-tight">GeoAlertAR · Sistema de Alerta de Incendios</h2>
+              <p class="text-sm text-gray-500 mt-1">Demo operativa – Provincia de Córdoba, Argentina</p>
+            </div>
+            <button onclick="closeModal()" class="text-3xl leading-none">&times;</button>
           </div>
-          <p>Demo de riesgo de incendios para Córdoba, AR (MODIS + CHIRPS + Open-Meteo + SAOCOM opcional).</p>
-          <p>Capas de contexto: Áreas Protegidas, Cuarteles de Bomberos, Comunidades Indígenas y Curvas de Nivel.</p>
+
+          <div class="rounded-lg border p-4 bg-white">
+            <h3 class="font-semibold mb-1">¿Qué es?</h3>
+            <p class="text-gray-700">
+              <b>GeoAlertAR</b> es un sistema geoespacial que estima y comunica el
+              <b>riesgo diario de incendios forestales (0–100)</b> integrando datos satelitales y meteorológicos,
+              con foco en la <b>prevención y toma de decisiones</b> por parte de organismos y brigadas.
+            </p>
+          </div>
+
+          <div class="rounded-lg border p-4 bg-white">
+            <h3 class="font-semibold mb-1">¿Cómo funciona?</h3>
+            <ul class="list-disc ml-5 space-y-1 text-gray-700">
+              <li>Calcula un <b>índice compuesto</b> a partir de vegetación (NDVI/NBR), temperatura superficial (LST),
+                  precipitación acumulada, viento y humedad relativa; y <i>opcionalmente</i> humedad de suelo (SAOCOM).</li>
+              <li>Clasifica el riesgo en <b>Bajo, Moderado, Alto y Crítico</b> y lo muestra sobre una grilla hexagonal.</li>
+              <li>Incluye <b>capas de contexto</b> (áreas protegidas, cuarteles, comunidades indígenas, curvas de nivel)
+                  para análisis territorial.</li>
+            </ul>
+          </div>
+
+          <div class="rounded-lg border p-4 bg-white">
+            <h3 class="font-semibold mb-1">Datos & Fuentes</h3>
+            <div class="grid md:grid-cols-2 gap-3 text-gray-700">
+              <div>
+                <p class="font-medium">Satelital / Superficie</p>
+                <ul class="list-disc ml-5">
+                  <li><b>MODIS</b>: NDVI, NBR (MOD09GA) y LST (MOD11A1)</li>
+                  <li><b>CHIRPS</b>: precipitación acumulada (60 días)</li>
+                  <li><b>SAOCOM (opcional)</b>: humedad de suelo</li>
+                </ul>
+              </div>
+              <div>
+                <p class="font-medium">Meteorología & Contexto</p>
+                <ul class="list-disc ml-5">
+                  <li><b>Open-Meteo</b>: viento y humedad relativa</li>
+                  <li><b>Capas</b>: áreas protegidas, cuarteles, comunidades, curvas de nivel</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="rounded-lg border p-4 bg-white">
+            <h3 class="font-semibold mb-1">Metodología (resumen)</h3>
+            <p class="text-gray-700">
+              Índice continuo <b>0–100</b> mediante combinación ponderada de variables biofísicas y meteorológicas,
+              inspirado en buenas prácticas (p. ej., FWI) y adaptado a condiciones regionales.
+              Validado contra <b>registros históricos</b> del SNMF y reportes de incendios en Córdoba.
+            </p>
+          </div>
+
+          <div class="rounded-lg border p-4 bg-white">
+            <h3 class="font-semibold mb-1">Estado & Alcance</h3>
+            <ul class="list-disc ml-5 space-y-1 text-gray-700">
+              <li>Versión demo enfocada en <b>Córdoba</b>, arquitectura escalable a <b>niveles provincial y nacional</b>.</li>
+              <li>Actualización periódica; preparado para incorporar más variables (pendiente, presión, SPI, etc.).</li>
+            </ul>
+          </div>
+
+          <div class="rounded-lg border p-4 bg-white">
+            <h3 class="font-semibold mb-1">Créditos</h3>
+            <p class="text-gray-700">
+              Desarrollo: <b>Equipo GeoAlertAR</b>. Datos: NASA/MODIS, CHIRPS, Open-Meteo y CONAE/SAOCOM (opcional).
+              Demo presentada en el marco de <b>NASA Space Apps</b>.
+            </p>
+          </div>
+
+          <div class="text-xs text-gray-500 text-right">
+            © ${new Date().getFullYear()} GeoAlertAR — Uso demostrativo.
+          </div>
         </div>`;
+      document.getElementById('modal-content').innerHTML = html;
       openModal();
     }
     window.showAboutModal = showAboutModal;
