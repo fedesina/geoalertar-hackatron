@@ -64,7 +64,6 @@ def analizar_hexagono_en_gee(feature):
 
 
 class AnalizadorHackathon:
-    # El resto de la clase es idéntico a la v5.2
     def __init__(self):
         self._inicializar_gee()
         self.df_saocom = self._cargar_saocom()
@@ -96,14 +95,33 @@ class AnalizadorHackathon:
     def calcular_riesgo_avanzado(self, props):
         C = { 'PESO_NBR': 0.7, 'PESO_NDVI': 0.3, 'TEMP_NORMAL': 15, 'TEMP_EXTREMA': 35, 'MULT_MAX_TEMP': 1.8, 'HUM_BAJA': 20, 'HUM_NORMAL': 60, 'MULT_MAX_HUM': 2.5, 'VIENTO_NORMAL': 15, 'VIENTO_EXTREMO': 60, 'MULT_MAX_VIENTO': 3.0, 'PRECIP_MIN_SECO': 10, 'PRECIP_MAX_SECO': 150, 'MULT_MAX_PRECIP': 1.5, 'SUELO_MIN_SECO_PCT': 10, 'SUELO_MAX_SECO_PCT': 30, 'MULT_MAX_SUELO_SECO': 1.8, 'ESCALA_FINAL': 100 }
         def _normalize(v, min_v, max_v): return np.clip((v - min_v) / (max_v - min_v), 0, 1)
+        
         riesgo_base = (_normalize(props.get('nbr', 0), 0.5, -0.2) * C['PESO_NBR']) + ((1 - _normalize(props.get('ndvi', 0), 0.2, 0.8)) * C['PESO_NDVI'])
+        
         mult_temp = 1 + (_normalize(props.get('lst_celsius', 15), C['TEMP_NORMAL'], C['TEMP_EXTREMA']) * (C['MULT_MAX_TEMP'] - 1))
-        mult_hum = 1 + ((1 - _normalize(props.get('humedad_min', 100), C['HUM_BAJA'], C['HUM_NORMAL'])) * (C['MULT_MAX_HUM'] - 1))
-        mult_viento = 1 + (_normalize(props.get('viento_max_kmh', 0), C['VIENTO_NORMAL'], C['VIENTO_EXTREMO']) * (C['MULT_MAX_VIENTO'] - 1))
+        
+        # --- INICIO DE LA CORRECCIÓN ---
+        # Verificamos si los valores de clima son None antes de usarlos.
+        # Si lo son, usamos un multiplicador neutro de 1.0 para no afectar el cálculo.
+        
+        humedad_min = props.get('humedad_min')
+        mult_hum = 1.0
+        if humedad_min is not None:
+            mult_hum = 1 + ((1 - _normalize(humedad_min, C['HUM_BAJA'], C['HUM_NORMAL'])) * (C['MULT_MAX_HUM'] - 1))
+
+        viento_max_kmh = props.get('viento_max_kmh')
+        mult_viento = 1.0
+        if viento_max_kmh is not None:
+            mult_viento = 1 + (_normalize(viento_max_kmh, C['VIENTO_NORMAL'], C['VIENTO_EXTREMO']) * (C['MULT_MAX_VIENTO'] - 1))
+        
+        # --- FIN DE LA CORRECCIÓN ---
+
         mult_precip = 1 + ((1 - _normalize(props.get('precip_60d_mm', 150), C['PRECIP_MIN_SECO'], C['PRECIP_MAX_SECO'])) * (C['MULT_MAX_PRECIP'] - 1))
+        
         mult_humedad_suelo = 1.0
         if props.get('humedad_saocom_pct') is not None and not np.isnan(props.get('humedad_saocom_pct')):
             mult_humedad_suelo = 1 + ((1 - _normalize(props.get('humedad_saocom_pct'), C['SUELO_MIN_SECO_PCT'], C['SUELO_MAX_SECO_PCT'])) * (C['MULT_MAX_SUELO_SECO'] - 1))
+        
         riesgo_bruto = riesgo_base * mult_temp * mult_hum * mult_viento * mult_precip * mult_humedad_suelo
         return np.clip(riesgo_bruto * C['ESCALA_FINAL'], 0, 100)
 
@@ -169,4 +187,3 @@ class AnalizadorHackathon:
 
 if __name__ == "__main__":
     AnalizadorHackathon().ejecutar()
-

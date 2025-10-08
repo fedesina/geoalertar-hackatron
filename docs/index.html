@@ -202,7 +202,7 @@
           mapLayers.context[info.name] = L.geoJSON(json, {
             style: info.style,
             pointToLayer: (f, latlng) => {
-              const iconHtml = info.name === 'Comunidades Indígenas' ? '🛖 ' : info.name.includes('Bomberos') ? '🚒' : '📍';
+              const iconHtml = info.name === 'Comunidades Indígenas' ? '🛖'  : info.name.includes('Bomberos') ? '🚒' : '📍';
               return L.marker(latlng, { icon: L.divIcon({ html: iconHtml, className: 'text-2xl', iconSize: [24,24] }) })
                       .bindTooltip(label(f.properties));
             },
